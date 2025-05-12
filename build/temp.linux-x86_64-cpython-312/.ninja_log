@@ -1,0 +1,12 @@
+# ninja log v5
+0	100	1747049105119217490	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/convolution.o	faf88deff70cc9d2
+0	2986	1747049108003242450	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/cuda/convolution.o	17adf388518f5158
+1	19	1747049452471961729	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/convolution.o	14c119f710556ad4
+1	627	1747049453013968500	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/cuda/convolution.o	90db902d4d1ef544
+0	13113	1747050634111583758	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/muladd.o	95328976318d947e
+0	44060	1747050665062081397	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/cuda/muladd.o	52566843eb08a6d2
+18	12791	1747050983854240937	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/muladd.o	95328976318d947e
+17	43147	1747051014203734654	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/cuda/muladd.o	52566843eb08a6d2
+15	12017	1747051843824034782	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/muladd.o	741429910118c6e3
+15	12454	1747051998787051275	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/muladd.o	6b81387bb4f5e8a6
+15	12481	1747052165419313509	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/extension_cpp/csrc/muladd.o	741429910118c6e3
