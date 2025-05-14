@@ -38,7 +38,7 @@ at::Tensor dilation_forward(const at::Tensor& a, const at::Tensor& b){
   }
 
 std::vector<at::Tensor> dilation_backward(
-    const at::Tensor& grad_output,
+    const at::Tensor& grad_output,  //grad output obtained from AutoGrad
     const at::Tensor& a,
     const at::Tensor& b) {
 
@@ -53,6 +53,8 @@ std::vector<at::Tensor> dilation_backward(
     return {grad_a, grad_b};
 }
 
+
+//Register the C++ functions in the torch::library
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &dilation_forward, "Dilation Forward");
     m.def("backward", &dilation_backward, "Dilation Backward");

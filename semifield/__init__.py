@@ -1,2 +1,4 @@
 import torch
-from . import dilation
+from .ops import dilation_op
+
+__all__ = ["dilation_op"]
