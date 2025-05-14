@@ -1,1 +1,0 @@
-DEBUG=1 USE_CUDA=0 python setup.py build
