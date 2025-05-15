@@ -8,3 +8,4 @@ semifield.egg-info/SOURCES.txt
 semifield.egg-info/dependency_links.txt
 semifield.egg-info/top_level.txt
 semifield/csrc/dilation.cpp
+semifield/csrc/cuda/dilation_kernel.cu
