@@ -10,8 +10,8 @@ from torch.utils import cpp_extension
 setup (
     name="semifield",  # Sets the PyPi package name. Best to set equal to package folder.
     ext_modules=[cpp_extension.CUDAExtension(
-        name='semifield.dilation',  # Sets the module name for current file in package. semifield.dilation in Python.
-        sources=['semifield/csrc/dilation.cpp', 'semifield/csrc/cuda/dilation_kernel.cu'],  # Source for this extension.
+        name='semifield.conv2d',  # Sets the module name for files below.
+        sources=['semifield/csrc/semifield_conv2d_backend.cpp', 'semifield/csrc/cuda/semifield_conv2d_kernels.cu'],  # Source for this extension.
         include_dirs=cpp_extension.include_paths(),
         extra_compile_args=['-O3'],
         language='c++')],

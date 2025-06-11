@@ -7,5 +7,5 @@ semifield.egg-info/PKG-INFO
 semifield.egg-info/SOURCES.txt
 semifield.egg-info/dependency_links.txt
 semifield.egg-info/top_level.txt
-semifield/csrc/dilation.cpp
-semifield/csrc/cuda/dilation_kernel.cu
+semifield/csrc/semifield_conv2d_backend.cpp
+semifield/csrc/cuda/semifield_conv2d_kernels.cu

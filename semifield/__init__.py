@@ -1,4 +1,4 @@
 import torch
-from .ops import dilation_op
+from .ops import SemiConv2d
 
-__all__ = ["dilation_op"]  # Export dilation_op
+__all__ = ["SemiConv2d"]  # SemiConv2d Module
