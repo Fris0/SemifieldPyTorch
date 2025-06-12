@@ -24,7 +24,7 @@ class MaxMin(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, kernel, padding):
         # Unpack padding values
-        top, bottom, left, right = padding
+        top, bottom = padding
 
         # Make input and kernel contiguous in memory for CUDA.
         input_contig = input.contiguous()
@@ -34,16 +34,15 @@ class MaxMin(torch.autograd.Function):
         output, indicees = conv2d.forward(input_contig,
                                           kernel_contig,
                                           top,
-                                          bottom,
-                                          left,
-                                          right)
+                                          bottom
+                                          )
 
         # Make indicees contiguous
         indicees_contig = indicees.contiguous()
 
         # Save indicees of X and Kernel where max was found
-        ctx.save_for_backward(input_contig, kernel_contig, indicees_contig, padding)
-        ctx.padding(top, bottom, left, right)
+        ctx.save_for_backward(input_contig, kernel_contig, indicees_contig)
+        ctx.padding(top, bottom)
 
         return output
 
@@ -54,7 +53,7 @@ class MaxMin(torch.autograd.Function):
 
         # Retrieve saved tensors for backward
         input_contig, kernel_contig, indicees_contig = ctx.saved_tensors
-        top, bottom, left, right = ctx.padding
+        top, bottom = ctx.padding
 
         # Calculate the gradients with respect to the input and kernel
         grad_input, grad_kernel = conv2d.backward(grad_output_contig,
@@ -62,9 +61,7 @@ class MaxMin(torch.autograd.Function):
                                                   kernel_contig,
                                                   indicees_contig,
                                                   top,
-                                                  bottom,
-                                                  left,
-                                                  right)
+                                                  bottom)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
         return grad_input, grad_kernel
@@ -91,7 +88,7 @@ class SemiConv2d(torch.nn.Module):
                                                      requires_grad=True))
         self.semifield_type = semifield_type
         self.padding = self.calculate_padding()
-    
+
     def forward(self, input):
         match self.semifield_type:
             case "MaxMin":
@@ -113,7 +110,7 @@ class SemiConv2d(torch.nn.Module):
         # Calculate total padding on height
         p_h = kernel_h - 1
 
-        top = left = math.floor(p_h / 2)
-        bottom = right = p_h - top
+        top = math.floor(p_h / 2)  # = left
+        bottom = p_h - top  # = right
 
-        return (top, bottom, left, right)
+        return (top, bottom)  # Therefore, only need top and bottom

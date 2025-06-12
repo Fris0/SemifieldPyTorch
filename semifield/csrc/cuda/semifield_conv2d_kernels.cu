@@ -1,8 +1,9 @@
 #include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-
+#include <math.h>
 #include <vector>
+
 
 template <typename scalar_t>
 __global__ void dilation_cuda_forward_kernel(
@@ -17,19 +18,21 @@ __global__ void dilation_cuda_forward_kernel(
   }
 }
 
-at::Tensor dilation_cuda_forward(const at::Tensor& a, const at::Tensor& b, int top, int bottom, int left, int right) {
-    auto result = torch::empty_like(a);
-    const int threads = 1024;
-    const int blocks = (a.numel() + threads - 1) / threads;
+at::Tensor dilation_cuda_forward(const at::Tensor& input, const at::Tensor& kernel, int top, int bottom) {
+    at::Tensor result = torch::empty_like(input);
+    const int threads = input.numel();
+    const int blocks = ceil(threads / 32);
   
-    AT_DISPATCH_FLOATING_TYPES(a.scalar_type(), "dilation_forward_cuda", ([&] {  // [&] capture all variables of outer scope by reference for lambda function.
-      dilation_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
-        a.data_ptr<scalar_t>(),
-        b.data_ptr<scalar_t>(),
-        result.data_ptr<scalar_t>(),
-        a.numel());
-    }));
-  
+    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "dilation_forward_cuda",
+    ([&] {
+        dilation_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
+            input.data_ptr<scalar_t>(),
+            kernel.data_ptr<scalar_t>(),
+            result.data_ptr<scalar_t>(),
+            input.numel());
+        }
+    ));
+
     return result;
   }
 
@@ -49,7 +52,7 @@ __global__ void dilation_cuda_backward_kernel(
     }
 }
 
-  std::vector<at::Tensor> dilation_cuda_backward(const at::Tensor& grad_output, const at::Tensor& a, const at::Tensor& b, int top, int bottom, int left, int right) {
+  std::vector<at::Tensor> dilation_cuda_backward(const at::Tensor& grad_output, const at::Tensor& a, const at::Tensor& b, int top, int bottom) {
     auto grad_a = torch::empty_like(a);
     auto grad_b = torch::empty_like(b);
     const int threads = 1024;
