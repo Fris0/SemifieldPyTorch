@@ -6,34 +6,74 @@
 
 
 template <typename scalar_t>
-__global__ void dilation_cuda_forward_kernel(
-    const scalar_t* a,
-    const scalar_t* b,
-    scalar_t* result,
-    int64_t size) {
+__global__ void dilation_cuda_forward_kernel(const scalar_t* input, const scalar_t* kernel, scalar_t* output, scalar_t* indicees, int H, int W, int kH, int kW, int top, int bottom)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;  // Index of flat image
 
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < size) {
-    result[idx] = a[idx] * b[idx];
-  }
+    // Skip thread when flat index outside W * H
+    if (idx >= W * H){
+        return;
+    }
+
+    int y = idx / W;  // 2D-Coordinate for y
+    int x = idx % W;  // 2D-Coordinate for x
+
+    int relOffset = kH / 2;  // Offset around center pixel
+
+    int maxIndex = 0;  // Max Index to store for backprop
+    float maxVal = -INFINITY;  // Max value for forward pass
+
+    for (int xOffset = -relOffset; xOffset <= relOffset; xOffset++){
+        for (int yOffset = -relOffset; yOffset <= relOffset; yOffset++){
+            int atX = x + xOffset;  // column
+            int atY = y + yOffset;  // row
+
+            float val = -INFINITY;
+
+            // If row and column fall within input image
+            if (atY >= 0 && atY < H && atX >= 0 && atX < W){
+                int kernel_x = xOffset + relOffset;
+                int kernel_y = yOffset + relOffset;
+
+                val = input[atY * W + atX] + kernel[kernel_y * kW + kernel_x];  // Image Val + Kernel Val
+            }
+
+            if (val > maxVal){
+                maxVal = val;
+                maxIndex = atY * W + atX;
+            }
+        }
+    }
+    output[idx] = maxVal;
+    indicees[idx] = maxIndex;
 }
 
-at::Tensor dilation_cuda_forward(const at::Tensor& input, const at::Tensor& kernel, int top, int bottom) {
-    at::Tensor result = torch::empty_like(input);
+std::vector<at::Tensor> dilation_cuda_forward(const at::Tensor& input, const at::Tensor& kernel,
+                                int H, int W,
+                                int kH, int kW,
+                                int top, int bottom){
+
+    at::Tensor output = torch::empty_like(input);
+    at::Tensor indicees = torch::empty_like(input);
+
     const int threads = input.numel();
-    const int blocks = ceil(threads / 32);
+    const int blocks = ceil(threads / 128);
   
     AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "dilation_forward_cuda",
     ([&] {
         dilation_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
             input.data_ptr<scalar_t>(),
             kernel.data_ptr<scalar_t>(),
-            result.data_ptr<scalar_t>(),
-            input.numel());
+            output.data_ptr<scalar_t>(),
+            indicees.data_ptr<scalar_t>(),
+            H, W,
+            kH, kW,
+            top, bottom
+          );
         }
     ));
 
-    return result;
+    return {output, indicees};
   }
 
 template <typename scalar_t>

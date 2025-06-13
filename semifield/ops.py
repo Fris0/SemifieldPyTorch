@@ -110,7 +110,7 @@ class SemiConv2d(torch.nn.Module):
         # Calculate total padding on height
         p_h = kernel_h - 1
 
-        top = math.floor(p_h / 2)  # = left
-        bottom = p_h - top  # = right
+        top = left = math.floor(p_h / 2)  # = left
+        bottom = right = p_h - top  # = right
 
         return (top, bottom)  # Therefore, only need top and bottom
