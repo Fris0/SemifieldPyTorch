@@ -28,7 +28,7 @@ std::vector<at::Tensor> max_min_forward(
     const int kW = kernel_sizes[2];
 
     // Return the result from the cuda kernel: output and indicees
-    return max_min_cuda_forward(batch_size, in_channels, out_channels, input, kernel, H, W, kH, kW, pad_tl, pad_br, stride);
+    return max_min_cuda_forward(batch_size, in_channels, out_channels, input, kernel, H, W, kH, kW, stride);
 }
 
 std::vector<at::Tensor> max_min_backward(
