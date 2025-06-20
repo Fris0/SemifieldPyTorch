@@ -133,7 +133,7 @@ class SemiConv2d(torch.nn.Module):
         self.out_channels = out_channels
         self.stride = stride
 
-        self.kernel = torch.zeros(out_channels, in_channels, kernel_size, kernel_size, device='cuda', requires_grad=True)
+        self.kernel = torch.zeros(out_channels, kernel_size, kernel_size, device='cuda', requires_grad=True)
 
         self.semifield_type = semifield_type
         self.padding = self.calculate_padding()
@@ -141,16 +141,18 @@ class SemiConv2d(torch.nn.Module):
 
     def forward(self, input):
         # Ensure right dimension
-        input = self.ensure_4d(input)
+        input = self.unsqueeze_4d(input)
 
         # Call correct semifield convolution
         match self.semifield_type:
             case "MaxMin":
                 # Pad input then pass it including kernel and padding
+                input = F.pad(input, pad=self.padding, mode='constant', value=float('-inf'))
+                print(input)
                 return MaxMin.apply(
                                     self.in_channels,
                                     self.out_channels,
-                                    F.pad(input, pad=self.padding, mode='constant', value=float('-inf')),
+                                    input,
                                     self.kernel,
                                     self.padding,
                                     self.stride,
@@ -158,7 +160,7 @@ class SemiConv2d(torch.nn.Module):
             case _:
                 raise ValueError(f"Expected MaxMin or MinPlus but got {self.semifield}.")
 
-    def ensure_4d(self, input):
+    def unsqueeze_4d(self, input):
         """
         Extends dimension of input tensor such that
         it always holds proper dimensions. This
@@ -168,13 +170,25 @@ class SemiConv2d(torch.nn.Module):
         Tensor with 4D shape
         """
         if input.dim() == 2:
+            self.initial_dim = 2
             return input.unsqueeze(0).unsqueeze(0)
         elif input.dim() == 3:
+            self.initial_dim = 3
             return input.unsqueeze(0)
         elif input.dim() == 4:
+            self.initial_dim = 4
             return input
         else:
             raise ValueError(f"Expected 2D, 3D, or 4D tensor, but got {input.dim()}D.")
+    
+    def squeeze_4d(self, input):
+        "Reduces tensor back to original dimension"
+        if self.initial_dim == 2:
+            return input.squeeze(0).squeeze(0)
+        elif self.initial_dim == 3:
+            return input.squeeze(0)
+        else:
+            return input
 
     def calculate_padding(self):
         """
@@ -182,7 +196,7 @@ class SemiConv2d(torch.nn.Module):
         required for same sized outputs.
         """
         # Calculate total padding on height
-        _, _, _, H = self.kernel.size()
+        _, _, H = self.kernel.size()
         p_h = H - 1
 
         top = left = math.floor(p_h / 2)

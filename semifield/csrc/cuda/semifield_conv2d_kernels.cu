@@ -1,23 +1,41 @@
 #include <torch/extension.h>
+#include <stdio.h>
+
 #include <cuda.h>
 #include <cuda_runtime.h>
+
 #include <math.h>
 #include <vector>
 
 
 template <typename scalar_t>
 __global__ void max_min_cuda_forward_kernel(
+    const int batch_size,
     const int in_channels, const int out_channels,
     const scalar_t* input, const scalar_t* kernel,
-    scalar_t* output, scalar_t* indicees,
+    scalar_t* output, scalar_t* indicees, // These values will be changed
     int H, int W,
     int kH, int kW,
     const int pad_tl, const int pad_br,
     const int stride)
 {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    int x = idx % W;
+    int y = (idx / W) % H;
+
+    if (idx >= batch_size * W * H){
+        return;
+    }
+
+    int n = idx / (H * W);
+    int k_center_y = (kH % 2 == 0) ? 0 : kH / 2;
+    int k_center_x = (k_center_y == 0) ? 0 : kH / 2;
+
+    printf("%d, %d, %d\n", x, y, n);
 }
 
 std::vector<at::Tensor> max_min_cuda_forward(
+    const int batch_size,
     const int in_channels, const int out_channels,
     const at::Tensor& input, const at::Tensor& kernel,
     const int H, const int W,
@@ -29,12 +47,16 @@ std::vector<at::Tensor> max_min_cuda_forward(
     at::Tensor output = torch::empty_like(input);
     at::Tensor indicees = torch::empty_like(input);
 
-    const int threads = input.numel();
-    const int blocks = ceil(threads / 128);
-  
+    const int threads_per_block = 64;
+    const int threads = input.numel() / in_channels;
+    const int blocks = (threads + threads_per_block - 1) / threads_per_block;
+
+    printf("threads %d and blocks %d\n", threads, blocks);
+
     AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "dilation_forward_cuda",
     ([&] {
-        max_min_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
+        max_min_cuda_forward_kernel<scalar_t><<<blocks, threads_per_block>>>(
+            batch_size,
             in_channels, out_channels,
             input.data_ptr<scalar_t>(),
             kernel.data_ptr<scalar_t>(),
@@ -47,6 +69,12 @@ std::vector<at::Tensor> max_min_cuda_forward(
           );
         }
     ));
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("Kernel launch failed: %s\n", cudaGetErrorString(err));
+    }
+    cudaDeviceSynchronize();
 
     return {output, indicees};
 }
@@ -83,18 +111,17 @@ std::vector<at::Tensor> max_min_cuda_backward(
 
   AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "max_min_cuda_backward", ([&] {
     max_min_cuda_backward_kernel<scalar_t><<<blocks, threads>>>(
-      in_channels, out_channels,
-      grad_output.data_ptr<scalar_t>(),
-      input.data_ptr<scalar_t>(),
-      kernel.data_ptr<scalar_t>(),
-      indicees.data_ptr<scalar_t>(),
-      H, W,
-      kH, kW,
-      pad_tl, pad_br,
-      stride
+        in_channels, out_channels,
+        grad_output.data_ptr<scalar_t>(),
+        input.data_ptr<scalar_t>(),
+        kernel.data_ptr<scalar_t>(),
+        indicees.data_ptr<scalar_t>(),
+        H, W,
+        kH, kW,
+        pad_tl, pad_br,
+        stride
     );
   }));
 
-  // Return whatever gradients you compute
-  return {grad_output.clone(), input.clone()};  // example only
+  return {grad_output, input};
 }
