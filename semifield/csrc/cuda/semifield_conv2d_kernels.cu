@@ -30,6 +30,7 @@ __global__ void max_min_cuda_forward_kernel(
     const int out_channels,
     const scalar_t* input, const scalar_t* kernel,
     scalar_t* output, scalar_t* indicees, // These values will be changed
+    int H, int W,
     int kH, int kW,
     const int stride)
 {
@@ -38,7 +39,38 @@ __global__ void max_min_cuda_forward_kernel(
 
     int oc, n, y, x;
     region.decode(idx, batch_size, out_channels, stride, oc, n, y, x);
+    
+    scalar_t max_val = -INFINITY;
+    int max_ic = NULL;
+
+    int k_center_y = kH / 2;
+    int k_center_x = kW / 2;
+
+    for (int ic = 0; ic < in_channels; ++ic){
+        for (int dy = 0; dy < kW; ++dy){
+            for (int dx = 0; dx < kH; ++dx){
+                int iy = y + dy - k_center_y;
+                int ix = x + dx - k_center_x;
+
+
+                scalar_t val = input[n * in_channels * H * W +
+                                     ic * H * W +
+                                     iy * W + ix];
+
+                scalar_t kval = kernel[oc * kH * kW +
+                                       (dy + region.start_y) * kW +
+                                       (dx + region.start_x)];
+
+                scalar_t diff = val - kval;
+                if (diff > max_val) {
+                    max_val = diff;
+                    max_ic = ic;
+                }      
+            }
+        }
+    }
     printf("oc: %d n: %d x:%d and  y:%d\n", oc, n, x, y);
+    output[] = max;
 }
 
 std::vector<at::Tensor> max_min_cuda_forward(
@@ -82,6 +114,7 @@ std::vector<at::Tensor> max_min_cuda_forward(
             kernel.data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
             indicees.data_ptr<scalar_t>(),
+            H, W,
             kH, kW,
             stride
           );
