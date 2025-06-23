@@ -25,7 +25,6 @@ class MaxMin(torch.autograd.Function):
     compiled semifield.dilation operations.
 
     inputs:
-    N = Batch size
     in_channels  = channels of input
     out_channels = desired output channels
     input   = the input following the above shapes
@@ -43,7 +42,9 @@ class MaxMin(torch.autograd.Function):
     @staticmethod
     def forward(ctx, in_channels, out_channels, input, kernel, padding, stride):
         # Unpack padding values
-        pad_tl, pad_br, _, _ = padding
+        left, right, top, bottom = padding
+        pad_w = left + right
+        pad_h = top  + bottom
 
         # Make input and kernel contiguous in memory for CUDA.
         input_contig = input.contiguous()
@@ -55,8 +56,8 @@ class MaxMin(torch.autograd.Function):
                                                 out_channels,
                                                 input_contig,
                                                 kernel_contig,
-                                                pad_tl,
-                                                pad_br,
+                                                pad_w,
+                                                pad_h,
                                                 stride,
                                                 )
 
@@ -67,8 +68,8 @@ class MaxMin(torch.autograd.Function):
         ctx.save_for_backward(input_contig, kernel_contig, indicees_contig)
         ctx.in_channels = in_channels
         ctx.out_channels = out_channels
-        ctx.pad_tl = pad_tl
-        ctx.pad_br = pad_br
+        ctx.pad_h = pad_h
+        ctx.pad_w = pad_w
         ctx.stride = stride
 
         return output
@@ -82,8 +83,8 @@ class MaxMin(torch.autograd.Function):
         input_contig, kernel_contig, indicees_contig = ctx.saved_tensors
         in_channels = ctx.in_channels
         out_channels = ctx.out_channels
-        pad_tl = ctx.pad_tl
-        pad_br = ctx.pad_br
+        pad_w = ctx.w
+        pad_h = ctx.h
         stride = ctx.stride
 
         # Calculate the gradients with respect to the input and kernel
@@ -94,8 +95,8 @@ class MaxMin(torch.autograd.Function):
                                                         input_contig,
                                                         kernel_contig,
                                                         indicees_contig,
-                                                        pad_tl,
-                                                        pad_br,
+                                                        pad_w,
+                                                        pad_h,
                                                         stride)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
@@ -133,7 +134,9 @@ class SemiConv2d(torch.nn.Module):
         self.out_channels = out_channels
         self.stride = stride
 
-        self.kernel = torch.zeros(out_channels, kernel_size, kernel_size, device='cuda', requires_grad=True)
+        self.kernel = torch.nn.Parameter(torch.zeros(out_channels, kernel_size,
+                                                     kernel_size, device='cuda',
+                                                     requires_grad=True))
 
         self.semifield_type = semifield_type
         self.padding = self.calculate_padding()
@@ -147,6 +150,7 @@ class SemiConv2d(torch.nn.Module):
         match self.semifield_type:
             case "MaxMin":
                 # Pad input then pass it including kernel and padding
+                print(input)
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('-inf'))
                 print(input)
                 return MaxMin.apply(
@@ -180,15 +184,6 @@ class SemiConv2d(torch.nn.Module):
             return input
         else:
             raise ValueError(f"Expected 2D, 3D, or 4D tensor, but got {input.dim()}D.")
-    
-    def squeeze_4d(self, input):
-        "Reduces tensor back to original dimension"
-        if self.initial_dim == 2:
-            return input.squeeze(0).squeeze(0)
-        elif self.initial_dim == 3:
-            return input.squeeze(0)
-        else:
-            return input
 
     def calculate_padding(self):
         """
