@@ -9,8 +9,8 @@
 
 // Thread.Index output -> (x, y) in input.
 struct OutputRegion {
-    int output_h, output_w;
-    int start_y, start_x;
+    int output_h, output_w;  // ouput height and width
+    int start_y, start_x;    // start pos for even or odd kernel
 
     __device__ inline void decode(int idx, int batch_size, int out_channels, int stride, int& oc, int& n, int& y, int& x) const {
         int img_size = output_h * output_w;
@@ -40,37 +40,31 @@ __global__ void max_min_cuda_forward_kernel(
     int oc, n, y, x;
     region.decode(idx, batch_size, out_channels, stride, oc, n, y, x);
     
-    scalar_t max_val = -INFINITY;
-    int max_ic = NULL;
+    scalar_t max_val = std::numeric_limits<scalar_t>::lowest();
+    int max_idx = -1;
 
-    int k_center_y = kH / 2;
-    int k_center_x = kW / 2;
+    int x_offset = (kW % 2 == 0) ? 0 : kW / 2;
+    int y_offset = (kH % 2 == 0) ? 0 : kH / 2;
 
     for (int ic = 0; ic < in_channels; ++ic){
-        for (int dy = 0; dy < kW; ++dy){
-            for (int dx = 0; dx < kH; ++dx){
-                int iy = y + dy - k_center_y;
-                int ix = x + dx - k_center_x;
+        for (int dy = 0; dy < kH; ++dy){
+            for (int dx = 0; dx < kW; ++dx){
+                int at_y = y + dy - y_offset;
+                int at_x = x + dx - x_offset;
 
+                scalar_t val = input[n * ic * H * W + ic * H * W + at_y * W + at_x];
+                scalar_t kval = kernel[oc * kH * kW + dy * kW + dx];
 
-                scalar_t val = input[n * in_channels * H * W +
-                                     ic * H * W +
-                                     iy * W + ix];
-
-                scalar_t kval = kernel[oc * kH * kW +
-                                       (dy + region.start_y) * kW +
-                                       (dx + region.start_x)];
-
-                scalar_t diff = val - kval;
-                if (diff > max_val) {
-                    max_val = diff;
-                    max_ic = ic;
-                }      
+                scalar_t res = val - kval;
+                if (res > max_val){
+                    max_val = res;
+                    max_idx = idx;
+                }
             }
         }
     }
-    printf("oc: %d n: %d x:%d and  y:%d\n", oc, n, x, y);
-    output[] = max;
+    output[idx] = max_val;
+    indicees[idx] = static_cast<scalar_t>(max_idx);
 }
 
 std::vector<at::Tensor> max_min_cuda_forward(
@@ -86,7 +80,7 @@ std::vector<at::Tensor> max_min_cuda_forward(
     int y_start = (kH % 2 == 0) ? 0 : kH / 2;
     int x_start = (kW % 2 == 0) ? 0 : kW / 2;
 
-    // Create output and indicees tensor
+    // Create output tensor of correct height and width
     int output_h = (H - kH) / stride + 1;
     int output_w = (W - kW) / stride + 1;
 
@@ -96,14 +90,14 @@ std::vector<at::Tensor> max_min_cuda_forward(
     int blocks = (total_threads + threads_per_block - 1) / threads_per_block;
 
     // Create output tensor and store indicees for backward
-    at::Tensor output = torch::empty({batch_size, in_channels, out_channels, output_h, output_w}, input.options());
+    at::Tensor output = torch::empty({batch_size, out_channels, output_h, output_w}, input.options());
     at::Tensor indicees = torch::empty_like(output);
 
     // Use output region struct to calculate relative index
     struct OutputRegion region = {output_h, output_w, y_start, x_start};
 
     // [&] Take all variables that are defined above and use them in kernel
-    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "dilation_forward_cuda",
+    AT_DISPATCH_ALL_TYPES(input.scalar_type(), "dilation_forward_cuda",
     ([&] {
         max_min_cuda_forward_kernel<scalar_t><<<blocks, threads_per_block>>>(
             region,
@@ -120,6 +114,7 @@ std::vector<at::Tensor> max_min_cuda_forward(
           );
         }
     ));
+    cudaDeviceSynchronize();
 
     return {output, indicees};
 }
@@ -145,9 +140,6 @@ std::vector<at::Tensor> max_min_cuda_backward(
     const int kH, const int kW,
     const int pad_w, const int pad_h,
     const int stride) {
-
-  dim3 threads(32, 32);
-  dim3 blocks((W + threads.x - 1) / threads.x, (H + threads.y - 1) / threads.y);
 
   AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "max_min_cuda_backward", ([&] {
     max_min_cuda_backward_kernel<scalar_t><<<blocks, threads>>>(

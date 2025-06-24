@@ -100,7 +100,7 @@ class MaxMin(torch.autograd.Function):
                                                         stride)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
-        return None, None, None, grad_input, grad_kernel, None, None
+        return  None, None, grad_input, grad_kernel, None, None  # Return size has to be equal to input size of forward
 
 # Dictionary contiang key word to class for SemiConv2d
 SemiConv2dOptions = {"MaxMin": MaxMin}
@@ -123,7 +123,7 @@ class SemiConv2d(torch.nn.Module):
     semifield_type = MaxMin or MinPlus
     kernel_size  = Tuple of shape of the kernel (W, H)
     stride  = the spacing between each convolution
-    
+
     Side-effects:
     Calls the MaxMin or MinPlus semifield convolution wrappers.
     """
@@ -134,25 +134,34 @@ class SemiConv2d(torch.nn.Module):
         self.out_channels = out_channels
         self.stride = stride
 
-        self.kernel = torch.nn.Parameter(torch.zeros(out_channels, kernel_size,
-                                                     kernel_size, device='cuda',
-                                                     requires_grad=True))
+        self.kernel = None  # Lazy init
+        self.padding = None
+        self.kernel_size = kernel_size
 
         self.semifield_type = semifield_type
-        self.padding = self.calculate_padding()
-
 
     def forward(self, input):
         # Ensure right dimension
         input = self.unsqueeze_4d(input)
 
+        # Creat kernel with same dtype as input for proper cuda-kernel functioning.
+        if self.kernel == None:
+            self.kernel = torch.nn.Parameter(torch.zeros(
+                                                    self.out_channels,
+                                                    self.kernel_size,
+                                                    self.kernel_size,
+                                                    device='cuda',
+                                                    dtype=input.dtype,
+                                                    requires_grad=True))
+
+        # After creation of kernel find padding required for input
+        self.padding = self.calculate_padding()
+
         # Call correct semifield convolution
         match self.semifield_type:
             case "MaxMin":
                 # Pad input then pass it including kernel and padding
-                print(input)
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('-inf'))
-                print(input)
                 return MaxMin.apply(
                                     self.in_channels,
                                     self.out_channels,

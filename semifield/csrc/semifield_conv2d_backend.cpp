@@ -19,6 +19,8 @@ std::vector<at::Tensor> max_min_forward(const int in_channels, const int out_cha
     const int kH = kernel_sizes[1];
     const int kW = kernel_sizes[2];
 
+    printf("H:%d, W:%d, kH:%d, kW:%d\n", H, W, kH, kW);
+
     // Return the result from the cuda kernel: output and indicees
     return max_min_cuda_forward(batch_size, in_channels, out_channels, input, kernel, H, W, kH, kW, pad_w, pad_h, stride);
 }
