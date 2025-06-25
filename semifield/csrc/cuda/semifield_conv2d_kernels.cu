@@ -30,8 +30,7 @@ __global__ void max_min_cuda_forward_kernel(
     const int out_channels,
     const scalar_t* input, const scalar_t* kernel,
     scalar_t* output,
-    int* input_indices,
-    int* kernel_indices,
+    int* input_indices, int* kernel_indices,
     int H, int W,
     int kH, int kW,
     const int stride)
@@ -55,13 +54,13 @@ __global__ void max_min_cuda_forward_kernel(
                 int at_y = y + dy - y_offset;
                 int at_x = x + dx - x_offset;
 
-                scalar_t val = input[n * ic * H * W + ic * H * W + at_y * W + at_x];
+                scalar_t val = input[n * in_channels * H * W + ic * H * W + at_y * W + at_x];
                 scalar_t kval = kernel[oc * kH * kW + dy * kW + dx];
 
                 scalar_t res = val - kval;
                 if (res > max_val){
                     max_val = res;
-                    max_idx = n * ic * H * W + ic * H * W + at_y * W + at_x;
+                    max_idx = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
                     max_kernel_idx = oc * kH * kW + dy * kW + dx;
                 }
             }
@@ -130,7 +129,7 @@ __global__ void max_min_cuda_backward_kernel(
     const int in_channels, const int out_channels,
     const scalar_t* grad_output,
     const scalar_t* input, const scalar_t* kernel,
-    scalar_t* grad_kernel, scalar_t* grad_input,
+    scalar_t* grad_input, scalar_t* grad_kernel,
     const int* input_indices, const int* kernel_indices,
     const int total_threads) {
 

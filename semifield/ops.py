@@ -52,7 +52,7 @@ class MaxMin(torch.autograd.Function):
                                                 out_channels,
                                                 input_contig,
                                                 kernel_contig,
-                                                stride,
+                                                stride
                                                 )
 
         # Make indicees contiguous
@@ -76,7 +76,6 @@ class MaxMin(torch.autograd.Function):
         input_contig, kernel_contig, input_indices, kernel_indices = ctx.saved_tensors
         in_channels = ctx.in_channels
         out_channels = ctx.out_channels
-        stride = ctx.stride
 
         # Calculate the gradients with respect to the input and kernel
         grad_input, grad_kernel = conv2d.max_min_backward(
@@ -86,11 +85,10 @@ class MaxMin(torch.autograd.Function):
                                                         input_contig,
                                                         kernel_contig,
                                                         input_indices,
-                                                        kernel_indices,
-                                                        stride)
+                                                        kernel_indices)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
-        return  None, None, grad_input, grad_kernel, None, None  # Return size has to be equal to input size of kernel
+        return None, None, grad_input, grad_kernel, None, None  # Return size has to be equal to input size of kernel
 
 # Dictionary contiang key word to class for SemiConv2d
 SemiConv2dOptions = {"MaxMin": MaxMin}

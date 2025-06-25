@@ -79,3 +79,8 @@
 20	15593	1750815475397146007	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/semifield/csrc/semifield_conv2d_backend.o	f1a61ebaa5e90b0b
 19	15238	1750816113642096633	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/semifield/csrc/semifield_conv2d_backend.o	f1a61ebaa5e90b0b
 19	31494	1750816129898300502	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/semifield/csrc/cuda/semifield_conv2d_kernels.o	b53ee3f38208df2b
+18	15449	1750818459450798003	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/semifield/csrc/semifield_conv2d_backend.o	f1a61ebaa5e90b0b
+18	33598	1750818477601099826	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/semifield/csrc/cuda/semifield_conv2d_kernels.o	b53ee3f38208df2b
+19	15350	1750819702980763289	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/semifield/csrc/semifield_conv2d_backend.o	f1a61ebaa5e90b0b
+19	32550	1750819720183993982	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/semifield/csrc/cuda/semifield_conv2d_kernels.o	b53ee3f38208df2b
+19	30149	1750820403278057225	/home/mark/thesis/SemifieldPyTorch/build/temp.linux-x86_64-cpython-312/semifield/csrc/cuda/semifield_conv2d_kernels.o	b53ee3f38208df2b
