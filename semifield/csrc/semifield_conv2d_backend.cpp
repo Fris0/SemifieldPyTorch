@@ -19,15 +19,11 @@ std::vector<at::Tensor> max_min_forward(const int in_channels, const int out_cha
     const int kH = kernel_sizes[1];
     const int kW = kernel_sizes[2];
 
-    printf("H:%d, W:%d, kH:%d, kW:%d\n", H, W, kH, kW);
-
     // Return the result from the cuda kernel: output and indicees
     return max_min_cuda_forward(batch_size, in_channels, out_channels, input, kernel, H, W, kH, kW, pad_w, pad_h, stride);
 }
 
-std::vector<at::Tensor> max_min_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output,
-                                        const at::Tensor& input, const at::Tensor& kernel, const at::Tensor& indicees,
-                                        const int pad_w, const int pad_h, const int stride) {
+std::vector<at::Tensor> max_min_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const at::Tensor& input_indices, const at::Tensor& kernel_indices, const int pad_w, const int pad_h, const int stride) {
     // Get sizes of input
     auto input_sizes = input.sizes();
     const int H = input_sizes[0];
@@ -39,10 +35,8 @@ std::vector<at::Tensor> max_min_backward(const int in_channels, const int out_ch
     const int kW = kernel_sizes[1];
 
     // Return the result from the cuda kernel
-    return max_min_cuda_backward(in_channels, out_channels, grad_output, input, kernel, indicees, H, W, kH, kW, pad_w, pad_h, stride);
+    return max_min_cuda_backward(in_channels, out_channels, grad_output, input, kernel, input_indices, kernel_indices, H, W, kH, kW, pad_w, pad_h, stride);
 }
-
-
 
 //Register the C++ functions in the torch::library
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {

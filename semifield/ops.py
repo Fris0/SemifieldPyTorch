@@ -51,7 +51,7 @@ class MaxMin(torch.autograd.Function):
         kernel_contig = kernel.contiguous()
 
         # Do forward and store output for consequent steps and indicees for backward
-        output, indicees = conv2d.max_min_forward(
+        output, input_indices, kernel_indices = conv2d.max_min_forward(
                                                 in_channels,
                                                 out_channels,
                                                 input_contig,
@@ -62,10 +62,11 @@ class MaxMin(torch.autograd.Function):
                                                 )
 
         # Make indicees contiguous
-        indicees_contig = indicees.contiguous()
+        input_indices = input_indices.contiguous()
+        kernel_indices = kernel_indices.contiguous()
 
         # Save indicees of X and Kernel where max was found
-        ctx.save_for_backward(input_contig, kernel_contig, indicees_contig)
+        ctx.save_for_backward(input_contig, kernel_contig, input_indices, kernel_indices)
         ctx.in_channels = in_channels
         ctx.out_channels = out_channels
         ctx.pad_h = pad_h
@@ -80,7 +81,7 @@ class MaxMin(torch.autograd.Function):
         grad_output_contig = grad_output.contiguous()
 
         # Retrieve saved tensors and params for backward
-        input_contig, kernel_contig, indicees_contig = ctx.saved_tensors
+        input_contig, kernel_contig, input_indices, kernel_indices = ctx.saved_tensors
         in_channels = ctx.in_channels
         out_channels = ctx.out_channels
         pad_w = ctx.w
@@ -94,13 +95,14 @@ class MaxMin(torch.autograd.Function):
                                                         grad_output_contig,
                                                         input_contig,
                                                         kernel_contig,
-                                                        indicees_contig,
+                                                        input_indices,
+                                                        kernel_indices,
                                                         pad_w,
                                                         pad_h,
                                                         stride)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
-        return  None, None, grad_input, grad_kernel, None, None  # Return size has to be equal to input size of forward
+        return  None, None, grad_input, grad_kernel, None, None  # Return size has to be equal to input size of kernel
 
 # Dictionary contiang key word to class for SemiConv2d
 SemiConv2dOptions = {"MaxMin": MaxMin}
@@ -143,6 +145,11 @@ class SemiConv2d(torch.nn.Module):
     def forward(self, input):
         # Ensure right dimension
         input = self.unsqueeze_4d(input)
+
+        grad_on = input.requires_grad == True
+
+        if (not grad_on):
+            raise TypeError("Input doesn't have requires grad on.")
 
         # Creat kernel with same dtype as input for proper cuda-kernel functioning.
         if self.kernel == None:
