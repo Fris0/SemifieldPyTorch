@@ -65,8 +65,6 @@ class MaxMin(torch.autograd.Function):
         ctx.out_channels = out_channels
         ctx.stride = stride
 
-        print(output)
-
         return output
 
     @staticmethod
@@ -144,12 +142,13 @@ class SemiConv2d(torch.nn.Module):
         # Creat kernel with same dtype as input for proper cuda-kernel functioning.
         if self.kernel == None:
             self.kernel = torch.nn.Parameter(torch.zeros(
-                                                    self.out_channels,
-                                                    self.kernel_size,
-                                                    self.kernel_size,
-                                                    device='cuda',
-                                                    dtype=input.dtype,
-                                                    requires_grad=True))
+                self.out_channels,
+                self.kernel_size,
+                self.kernel_size,
+                device=input.device,
+                dtype=input.dtype
+            ))
+            self.register_parameter("kernel", self.kernel)
 
         # After creation of kernel find padding required for input
         self.padding = self.calculate_padding()

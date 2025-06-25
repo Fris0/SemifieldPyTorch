@@ -18,9 +18,4 @@ std::vector<torch::Tensor> max_min_cuda_backward(
     const at::Tensor& input,
     const at::Tensor& kernel,
     const at::Tensor& input_indices,
-    const at::Tensor& kernel_indices,
-    const int H,
-    const int W,
-    const int kH,
-    const int kW,
-    const int stride);
+    const at::Tensor& kernel_indices);

@@ -24,18 +24,8 @@ std::vector<at::Tensor> max_min_forward(const int in_channels, const int out_cha
 }
 
 std::vector<at::Tensor> max_min_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const at::Tensor& input_indices, const at::Tensor& kernel_indices, const int stride) {
-    // Get sizes of input
-    auto input_sizes = input.sizes();
-    const int H = input_sizes[0];
-    const int W = input_sizes[1];
-
-	// Get sizes of kernel
-    auto kernel_sizes = kernel.sizes();
-    const int kH = kernel_sizes[0];
-    const int kW = kernel_sizes[1];
-
     // Return the result from the cuda kernel
-    return max_min_cuda_backward(in_channels, out_channels, grad_output, input, kernel, input_indices, kernel_indices, H, W, kH, kW, stride);
+    return max_min_cuda_backward(in_channels, out_channels, grad_output, input, kernel, input_indices, kernel_indices);
 }
 
 //Register the C++ functions in the torch::library
