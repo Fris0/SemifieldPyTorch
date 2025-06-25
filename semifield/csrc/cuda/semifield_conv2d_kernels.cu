@@ -30,8 +30,8 @@ __global__ void max_min_cuda_forward_kernel(
     const int out_channels,
     const scalar_t* input, const scalar_t* kernel,
     scalar_t* output,
-    scalar_t* input_indices,
-    scalar_t* kernel_indices,
+    int* input_indices,
+    int* kernel_indices,
     int H, int W,
     int kH, int kW,
     const int stride)
@@ -78,7 +78,6 @@ std::vector<at::Tensor> max_min_cuda_forward(
     const at::Tensor& input, const at::Tensor& kernel,
     const int H, const int W,
     const int kH, const int kW,
-    const int pad_w, const int pad_h,
     const int stride)
     {
     // Center for kernel. For odd- and even kernels.
@@ -96,7 +95,7 @@ std::vector<at::Tensor> max_min_cuda_forward(
 
     // Create output tensor and store indicees for backward
     at::Tensor output = torch::empty({batch_size, out_channels, output_h, output_w}, input.options());
-    at::Tensor input_indices = torch::zeros({batch_size, out_channels, output_h, output_w});
+    at::Tensor input_indices = torch::zeros({batch_size, out_channels, output_h, output_w}, input.options().dtype(torch::kInt));
     at::Tensor kernel_indices = torch::zeros_like(input_indices);
 
     // Use output region struct to calculate relative index
@@ -113,8 +112,8 @@ std::vector<at::Tensor> max_min_cuda_forward(
             input.data_ptr<scalar_t>(),
             kernel.data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
-            input_indices.data_ptr<scalar_t>(),
-            kernel_indices.data_ptr<scalar_t>(),
+            input_indices.data_ptr<int>(),
+            kernel_indices.data_ptr<int>(),
             H, W,
             kH, kW,
             stride
@@ -131,7 +130,7 @@ __global__ void max_min_cuda_backward_kernel(
     const int in_channels, const int out_channels,
     const scalar_t* grad_output,
     const scalar_t* input, const scalar_t* kernel,
-    const scalar_t* input_indices, const scalar_t* kernel_indices,
+    const int* input_indices, const int* kernel_indices,
     scalar_t* grad_kernel, scalar_t* grad_input,
     const int H, const int W,
     const int kH, const int kW,
@@ -142,7 +141,7 @@ std::vector<at::Tensor> max_min_cuda_backward(
     const int in_channels, const int out_channels,
     const at::Tensor& grad_output,
     const at::Tensor& input, const at::Tensor& kernel,
-    const at::Tensor& input_incides, const at::Tensor& kernel_indices,
+    const at::Tensor& input_indices, const at::Tensor& kernel_indices,
     const int H, const int W,
     const int kH, const int kW,
     const int stride) {
@@ -150,15 +149,17 @@ std::vector<at::Tensor> max_min_cuda_backward(
     at::Tensor grad_kernel = torch::zeros_like(kernel);
     at::Tensor grad_input  = torch::zeros_like(input);
 
+    int blocks = 1;
+    int threads = 1;
+
     AT_DISPATCH_ALL_TYPES(input.scalar_type(), "max_min_cuda_backward", ([&] {
         max_min_cuda_backward_kernel<scalar_t><<<blocks, threads>>>(
             in_channels, out_channels,
             grad_output.data_ptr<scalar_t>(),
             input.data_ptr<scalar_t>(),
             kernel.data_ptr<scalar_t>(),
-            input_indices.data_ptr<scalar_t>(), kernel_indices.data_ptr<scalar_t>(),
-            grad_kernel.data_ptr<scalar_t>(),
-            grad_input.data_ptr<scalar_t>(),
+            input_indices.data_ptr<int>(), kernel_indices.data_ptr<int>(),
+            grad_kernel.data_ptr<scalar_t>(), grad_input.data_ptr<scalar_t>(),
             H, W,
             kH, kW,
             stride);

@@ -41,10 +41,6 @@ class MaxMin(torch.autograd.Function):
     """    
     @staticmethod
     def forward(ctx, in_channels, out_channels, input, kernel, padding, stride):
-        # Unpack padding values
-        left, right, top, bottom = padding
-        pad_w = left + right
-        pad_h = top  + bottom
 
         # Make input and kernel contiguous in memory for CUDA.
         input_contig = input.contiguous()
@@ -56,8 +52,6 @@ class MaxMin(torch.autograd.Function):
                                                 out_channels,
                                                 input_contig,
                                                 kernel_contig,
-                                                pad_w,
-                                                pad_h,
                                                 stride,
                                                 )
 
@@ -69,9 +63,9 @@ class MaxMin(torch.autograd.Function):
         ctx.save_for_backward(input_contig, kernel_contig, input_indices, kernel_indices)
         ctx.in_channels = in_channels
         ctx.out_channels = out_channels
-        ctx.pad_h = pad_h
-        ctx.pad_w = pad_w
         ctx.stride = stride
+
+        print(output)
 
         return output
 
@@ -84,8 +78,6 @@ class MaxMin(torch.autograd.Function):
         input_contig, kernel_contig, input_indices, kernel_indices = ctx.saved_tensors
         in_channels = ctx.in_channels
         out_channels = ctx.out_channels
-        pad_w = ctx.w
-        pad_h = ctx.h
         stride = ctx.stride
 
         # Calculate the gradients with respect to the input and kernel
@@ -97,8 +89,6 @@ class MaxMin(torch.autograd.Function):
                                                         kernel_contig,
                                                         input_indices,
                                                         kernel_indices,
-                                                        pad_w,
-                                                        pad_h,
                                                         stride)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
@@ -187,7 +177,9 @@ class SemiConv2d(torch.nn.Module):
         reduces conditional checks in code.
 
         Output:
-        Tensor with 4D shape
+        Tensor with 4D shape. Handy for C++ where a static
+        size lookup is performed. Thus similar dimensions
+        required. Does not affect output.
         """
         if input.dim() == 2:
             self.initial_dim = 2
@@ -205,6 +197,10 @@ class SemiConv2d(torch.nn.Module):
         """
         Calculate the padding for symmetric and assymetric kernels
         required for same sized outputs.
+
+        Output: left, right top and bottom, where
+        each variable represents the padding
+        on that side of the input.
         """
         # Calculate total padding on height
         _, _, H = self.kernel.size()

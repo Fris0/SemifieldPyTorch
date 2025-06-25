@@ -9,8 +9,6 @@ std::vector<at::Tensor> max_min_cuda_forward(
     const int W,
     const int kH,
     const int kW,
-    const int pad_w,
-    const int pad_h,
     const int stride);
 
 std::vector<torch::Tensor> max_min_cuda_backward(
@@ -25,6 +23,4 @@ std::vector<torch::Tensor> max_min_cuda_backward(
     const int W,
     const int kH,
     const int kW,
-    const int pad_w,
-    const int pad_h,
     const int stride);
