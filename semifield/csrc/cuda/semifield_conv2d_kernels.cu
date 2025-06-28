@@ -54,18 +54,20 @@ __global__ void max_min_cuda_forward_kernel(
                 int at_y = y + dy - y_offset;
                 int at_x = x + dx - x_offset;
 
-                scalar_t val = input[n * in_channels * H * W + ic * H * W + at_y * W + at_x];
-                scalar_t kval = kernel[oc * kH * kW + dy * kW + dx];
+                int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
+                int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
+                scalar_t val = input[val_idx];
+                scalar_t kval = kernel[kval_idx];
 
                 scalar_t res = val - kval;
                 if (res > max_val){
                     max_val = res;
-                    max_idx = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
-                    max_kernel_idx = oc * kH * kW + dy * kW + dx;
+                    max_idx = val_idx;
+                    max_kernel_idx = kval_idx;
                 }
             }
         }
-    } 
+    }
     output[idx] = max_val;
     input_indices[idx] = max_idx;
     kernel_indices[idx] = max_kernel_idx;
@@ -142,7 +144,7 @@ __global__ void max_min_cuda_backward_kernel(
     int input_idx  = input_indices[idx];
 
     atomicAdd(&grad_input[input_idx], grad);
-    atomicAdd(&grad_kernel[kernel_idx], -grad);
+    atomicAdd(&grad_kernel[kernel_idx], grad);
 }
 
 std::vector<at::Tensor> max_min_cuda_backward(

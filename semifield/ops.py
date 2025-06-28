@@ -22,7 +22,7 @@ class MaxMin(torch.autograd.Function):
     Create an autograd supported function.
 
     Define forward and backward to be the
-    compiled semifield.dilation operations.
+    compiled conv2d operations.
 
     inputs:
     in_channels  = channels of input
@@ -90,8 +90,12 @@ class MaxMin(torch.autograd.Function):
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
         return None, None, grad_input, grad_kernel, None, None  # Return size has to be equal to input size of kernel
 
+class MinPlus(torch.autograd.Function):
+    pass
+
 # Dictionary contiang key word to class for SemiConv2d
-SemiConv2dOptions = {"MaxMin": MaxMin}
+SemiConv2dOptions = {"MaxMin": MaxMin,
+                     "MinPlus": MinPlus}
 
 class SemiConv2d(torch.nn.Module):
     """
@@ -141,6 +145,7 @@ class SemiConv2d(torch.nn.Module):
         if self.kernel == None:
             self.kernel = torch.nn.Parameter(torch.zeros(
                 self.out_channels,
+                self.in_channels,
                 self.kernel_size,
                 self.kernel_size,
                 device=input.device,
@@ -156,6 +161,7 @@ class SemiConv2d(torch.nn.Module):
             case "MaxMin":
                 # Pad input then pass it including kernel and padding
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('-inf'))
+                print(input)
                 return MaxMin.apply(
                                     self.in_channels,
                                     self.out_channels,
@@ -200,7 +206,7 @@ class SemiConv2d(torch.nn.Module):
         on that side of the input.
         """
         # Calculate total padding on height
-        _, _, H = self.kernel.size()
+        _, _, _, H = self.kernel.size()
         p_h = H - 1
 
         top = left = math.floor(p_h / 2)
