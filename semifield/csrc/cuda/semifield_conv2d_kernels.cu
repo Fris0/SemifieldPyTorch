@@ -22,6 +22,7 @@ struct OutputRegion {
     }
 };
 
+// MaxMin
 template <typename scalar_t>
 __global__ void max_min_cuda_forward_kernel(
     struct OutputRegion region,
@@ -162,6 +163,158 @@ std::vector<at::Tensor> max_min_cuda_backward(
 
     AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "max_min_cuda_backward", ([&] {
         max_min_cuda_backward_kernel<scalar_t><<<blocks, threads_per_block>>>(
+            in_channels, out_channels,
+            grad_output.data_ptr<scalar_t>(),
+            input.data_ptr<scalar_t>(), kernel.data_ptr<scalar_t>(),
+            grad_input.data_ptr<scalar_t>(), grad_kernel.data_ptr<scalar_t>(),
+            input_indices.data_ptr<int>(), kernel_indices.data_ptr<int>(),
+            total_threads);
+  }));
+
+  return {grad_input, grad_kernel};
+}
+
+// Min Plus
+template <typename scalar_t>
+__global__ void min_plus_cuda_forward_kernel(
+    struct OutputRegion region,
+    const int batch_size,
+    const int in_channels,
+    const int out_channels,
+    const scalar_t* input, const scalar_t* kernel,
+    scalar_t* output,
+    int* input_indices, int* kernel_indices,
+    int H, int W,
+    int kH, int kW,
+    const int stride)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= batch_size * region.output_h * region.output_w * out_channels) return;
+
+    int oc, n, y, x;
+    region.decode(idx, batch_size, out_channels, stride, oc, n, y, x);
+    
+    scalar_t min_val = std::numeric_limits<scalar_t>::max();
+    int min_idx = -1;
+    int min_kernel_idx = -1;
+
+    int x_offset = (kW % 2 == 0) ? 0 : kW / 2;
+    int y_offset = (kH % 2 == 0) ? 0 : kH / 2;
+
+    for (int ic = 0; ic < in_channels; ++ic){
+        for (int dy = 0; dy < kH; ++dy){
+            for (int dx = 0; dx < kW; ++dx){
+                int at_y = y + dy - y_offset;
+                int at_x = x + dx - x_offset;
+
+                int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
+                int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
+                scalar_t val = input[val_idx];
+                scalar_t kval = kernel[kval_idx];
+
+                scalar_t res = val + kval;
+                if (res < min_val){
+                    min_val = res;
+                    min_idx = val_idx;
+                    min_kernel_idx = kval_idx;
+                }
+            }
+        }
+    }
+    output[idx] = min_val;
+    input_indices[idx] = min_idx;
+    kernel_indices[idx] = min_kernel_idx;
+}
+
+std::vector<at::Tensor> min_plus_cuda_forward(
+    const int batch_size,
+    const int in_channels, const int out_channels,
+    const at::Tensor& input, const at::Tensor& kernel,
+    const int H, const int W,
+    const int kH, const int kW,
+    const int stride)
+    {
+    // Center for kernel. For odd- and even kernels.
+    int y_start = (kH % 2 == 0) ? 0 : kH / 2;
+    int x_start = (kW % 2 == 0) ? 0 : kW / 2;
+
+    // Create output tensor of correct height and width
+    int output_h = (H - kH) / stride + 1;
+    int output_w = (W - kW) / stride + 1;
+
+    // Calculate the kernel block count and threads for each block
+    int total_threads = batch_size * out_channels * output_h * output_w;
+    int threads_per_block = 128;
+    int blocks = (total_threads + threads_per_block - 1) / threads_per_block;
+
+    // Create output tensor and store indicees for backward
+    at::Tensor output = torch::empty({batch_size, out_channels, output_h, output_w}, input.options());
+    at::Tensor input_indices = torch::zeros({batch_size, out_channels, output_h, output_w}, input.options().dtype(torch::kInt32));
+    at::Tensor kernel_indices = torch::zeros_like(input_indices);
+
+    // Use output region struct to calculate relative index
+    struct OutputRegion region = {output_h, output_w, y_start, x_start};
+
+    // [&] Take all variables that are defined above and use them in kernel
+    AT_DISPATCH_ALL_TYPES(input.scalar_type(), "dilation_forward_cuda",
+    ([&] {
+        min_plus_cuda_forward_kernel<scalar_t><<<blocks, threads_per_block>>>(
+            region,
+            batch_size,
+            in_channels,
+            out_channels,
+            input.data_ptr<scalar_t>(),
+            kernel.data_ptr<scalar_t>(),
+            output.data_ptr<scalar_t>(),
+            input_indices.data_ptr<int>(),
+            kernel_indices.data_ptr<int>(),
+            H, W,
+            kH, kW,
+            stride
+          );
+        }
+    ));
+    cudaDeviceSynchronize();
+
+    return {output, input_indices, kernel_indices};
+}
+
+template <typename scalar_t>
+__global__ void min_plus_cuda_backward_kernel(
+    const int in_channels, const int out_channels,
+    const scalar_t* grad_output,
+    const scalar_t* input, const scalar_t* kernel,
+    scalar_t* grad_input, scalar_t* grad_kernel,
+    const int* input_indices, const int* kernel_indices,
+    const int total_threads) {
+
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_threads) return;
+
+    scalar_t grad  = grad_output[idx];
+
+    int kernel_idx = kernel_indices[idx];
+    int input_idx  = input_indices[idx];
+
+    atomicAdd(&grad_input[input_idx], grad);
+    atomicAdd(&grad_kernel[kernel_idx], grad);
+}
+
+std::vector<at::Tensor> min_plus_cuda_backward(
+    const int in_channels, const int out_channels,
+    const at::Tensor& grad_output,
+    const at::Tensor& input, const at::Tensor& kernel,
+    const at::Tensor& input_indices, const at::Tensor& kernel_indices) {
+
+    at::Tensor grad_input  = torch::zeros_like(input);
+    at::Tensor grad_kernel = torch::zeros_like(kernel);
+
+    int total_threads = grad_output.numel();
+    int threads_per_block = 128;
+    int blocks = (total_threads + threads_per_block - 1) / threads_per_block;
+
+    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "max_min_cuda_backward", ([&] {
+        min_plus_cuda_backward_kernel<scalar_t><<<blocks, threads_per_block>>>(
             in_channels, out_channels,
             grad_output.data_ptr<scalar_t>(),
             input.data_ptr<scalar_t>(), kernel.data_ptr<scalar_t>(),
