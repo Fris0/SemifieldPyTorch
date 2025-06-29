@@ -328,14 +328,14 @@ std::vector<at::Tensor> min_plus_cuda_backward(
 
 // Smooth Max
 template <typename scalar_t>
-__global__ void max_min_cuda_forward_kernel(
+__global__ void smoothmax_cuda_forward_kernel(
     struct OutputRegion region,
     const int batch_size,
     const int in_channels,
     const int out_channels,
     const scalar_t* input, const scalar_t* kernel,
     scalar_t* output,
-    int* input_indices, int* kernel_indices,
+    const scalar_t alpha,
     int H, int W,
     int kH, int kW,
     const int stride)
@@ -345,10 +345,9 @@ __global__ void max_min_cuda_forward_kernel(
 
     int oc, n, y, x;
     region.decode(idx, batch_size, out_channels, stride, oc, n, y, x);
-    
-    scalar_t max_val = std::numeric_limits<scalar_t>::lowest();
-    int max_idx = -1;
-    int max_kernel_idx = -1;
+
+    scalar_t max_s = std::numeric_limits<scalar_t>::lowest();
+    scalar_t sum_exp = 0.0;
 
     int x_offset = (kW % 2 == 0) ? 0 : kW / 2;
     int y_offset = (kH % 2 == 0) ? 0 : kH / 2;
@@ -361,120 +360,157 @@ __global__ void max_min_cuda_forward_kernel(
 
                 int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
                 int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
-                scalar_t val = input[val_idx];
-                scalar_t kval = kernel[kval_idx];
 
-                scalar_t res = val - kval;
-                if (res > max_val){
-                    max_val = res;
-                    max_idx = val_idx;
-                    max_kernel_idx = kval_idx;
-                }
+                scalar_t s = input[val_idx] + kernel[kval_idx];
+                scalar_t exp_s = expf(alpha * s);
+
+                if (s > max_s) max_s = s;
+                sum_exp += exp_s;
             }
         }
     }
-    output[idx] = max_val;
-    input_indices[idx] = max_idx;
-    kernel_indices[idx] = max_kernel_idx;
+    output[idx] = (1.0f / alpha) * logf(sum_exp);
 }
 
-std::vector<at::Tensor> smooth_max_cuda_forward(
+// Kernel launch wrapper, adjusting from your existing function
+std::vector<at::Tensor> smoothmax_cuda_forward(
     const int batch_size,
     const int in_channels, const int out_channels,
     const at::Tensor& input, const at::Tensor& kernel,
     const int H, const int W,
     const int kH, const int kW,
     const int stride,
-    const int alpha)
-    {
-    // Center for kernel. For odd- and even kernels.
+    const float alpha) {
+
     int y_start = (kH % 2 == 0) ? 0 : kH / 2;
     int x_start = (kW % 2 == 0) ? 0 : kW / 2;
-
-    // Create output tensor of correct height and width
     int output_h = (H - kH) / stride + 1;
     int output_w = (W - kW) / stride + 1;
 
-    // Calculate the kernel block count and threads for each block
     int total_threads = batch_size * out_channels * output_h * output_w;
     int threads_per_block = 128;
     int blocks = (total_threads + threads_per_block - 1) / threads_per_block;
 
-    // Create output tensor and store indicees for backward
     at::Tensor output = torch::empty({batch_size, out_channels, output_h, output_w}, input.options());
-    at::Tensor input_indices = torch::zeros({batch_size, out_channels, output_h, output_w}, input.options().dtype(torch::kInt32));
-    at::Tensor kernel_indices = torch::zeros_like(input_indices);
 
-    // Use output region struct to calculate relative index
     struct OutputRegion region = {output_h, output_w, y_start, x_start};
 
-    // [&] Take all variables that are defined above and use them in kernel
-    AT_DISPATCH_ALL_TYPES(input.scalar_type(), "dilation_forward_cuda",
-    ([&] {
-        max_min_cuda_forward_kernel<scalar_t><<<blocks, threads_per_block>>>(
-            region,
-            batch_size,
-            in_channels,
-            out_channels,
-            input.data_ptr<scalar_t>(),
-            kernel.data_ptr<scalar_t>(),
+    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "smoothmax_cuda_forward", ([&] {
+        smoothmax_cuda_forward_kernel<scalar_t><<<blocks, threads_per_block>>>(
+            region, batch_size, in_channels, out_channels,
+            input.data_ptr<scalar_t>(), kernel.data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
-            input_indices.data_ptr<int>(),
-            kernel_indices.data_ptr<int>(),
-            H, W,
-            kH, kW,
-            stride
-          );
-        }
-    ));
+            static_cast<scalar_t>(alpha),
+            H, W, kH, kW, stride);
+    }));
     cudaDeviceSynchronize();
 
-    return {output, input_indices, kernel_indices};
+    return {output};
 }
 
 template <typename scalar_t>
-__global__ void max_min_cuda_backward_kernel(
-    const int in_channels, const int out_channels,
+__global__ void smoothmax_cuda_backward_kernel(
+    struct OutputRegion region,
+    const int batch_size,
+    const int in_channels,
+    const int out_channels,
     const scalar_t* grad_output,
-    const scalar_t* input, const scalar_t* kernel,
-    scalar_t* grad_input, scalar_t* grad_kernel,
-    const int* input_indices, const int* kernel_indices,
-    const int total_threads) {
-
+    const scalar_t* input,
+    const scalar_t* kernel,
+    scalar_t* grad_input,
+    scalar_t* grad_kernel,
+    const scalar_t alpha,
+    int H, int W,
+    int kH, int kW,
+    const int stride)
+{
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= total_threads) return;
+    if (idx >= batch_size * region.output_h * region.output_w * out_channels) return;
 
-    scalar_t grad  = grad_output[idx];
+    int oc, n, y, x;
+    region.decode(idx, batch_size, out_channels, stride, oc, n, y, x);
 
-    int kernel_idx = kernel_indices[idx];
-    int input_idx  = input_indices[idx];
+    scalar_t max_s = -INFINITY;
+    const int max_kernel_elems = 256;
+    scalar_t s_vals[max_kernel_elems];
+    int val_idxs[max_kernel_elems];
+    int kval_idxs[max_kernel_elems];
+    int counter = 0;
 
-    atomicAdd(&grad_input[input_idx], grad);
-    atomicAdd(&grad_kernel[kernel_idx], grad);
+    int x_offset = (kW % 2 == 0) ? 0 : kW / 2;
+    int y_offset = (kH % 2 == 0) ? 0 : kH / 2;
+
+    for (int ic = 0; ic < in_channels; ++ic){
+        for (int dy = 0; dy < kH; ++dy){
+            for (int dx = 0; dx < kW; ++dx){
+                int at_y = y + dy - y_offset;
+                int at_x = x + dx - x_offset;
+
+                int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
+                int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
+
+                scalar_t s = input[val_idx] + kernel[kval_idx];
+                s_vals[counter] = s;
+                val_idxs[counter] = val_idx;
+                kval_idxs[counter] = kval_idx;
+
+                if (s > max_s) max_s = s;
+                counter++;
+            }
+        }
+    }
+
+    scalar_t sum_exp = 0.0;
+    for (int i = 0; i < counter; ++i) {
+        sum_exp += expf(alpha * (s_vals[i] - max_s));
+    }
+
+    scalar_t go = grad_output[idx];
+
+    for (int i = 0; i < counter; ++i) {
+        scalar_t p = expf(alpha * (s_vals[i] - max_s)) / sum_exp;
+        scalar_t grad = go * p;
+
+        atomicAdd(&grad_input[val_idxs[i]], grad);
+        atomicAdd(&grad_kernel[kval_idxs[i]], grad);
+    }
 }
 
-std::vector<at::Tensor> max_min_cuda_backward(
-    const int in_channels, const int out_channels,
+std::vector<at::Tensor> smoothmax_cuda_backward(
+    const int batch_size, const int in_channels, const int out_channels,
     const at::Tensor& grad_output,
     const at::Tensor& input, const at::Tensor& kernel,
-    const at::Tensor& input_indices, const at::Tensor& kernel_indices) {
+    const int H, const int W,
+    const int kH, const int kW,
+    const int stride,
+    const float alpha) {
 
     at::Tensor grad_input  = torch::zeros_like(input);
     at::Tensor grad_kernel = torch::zeros_like(kernel);
 
-    int total_threads = grad_output.numel();
+    int start_y = (kH % 2 == 0) ? 0 : kH / 2;
+    int start_x = (kW % 2 == 0) ? 0 : kW / 2;
+    int output_h = (H - kH) / stride + 1;
+    int output_w = (W - kW) / stride + 1;
+
+    int total_threads = batch_size * out_channels * output_h * output_w;
     int threads_per_block = 128;
     int blocks = (total_threads + threads_per_block - 1) / threads_per_block;
 
-    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "max_min_cuda_backward", ([&] {
-        max_min_cuda_backward_kernel<scalar_t><<<blocks, threads_per_block>>>(
-            in_channels, out_channels,
+    struct OutputRegion region = {output_h, output_w,
+                                  start_y,
+                                  start_x};
+
+    AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "smoothmax_cuda_backward", ([&] {
+        smoothmax_cuda_backward_kernel<scalar_t><<<blocks, threads_per_block>>>(
+            region, batch_size, in_channels, out_channels,
             grad_output.data_ptr<scalar_t>(),
             input.data_ptr<scalar_t>(), kernel.data_ptr<scalar_t>(),
             grad_input.data_ptr<scalar_t>(), grad_kernel.data_ptr<scalar_t>(),
-            input_indices.data_ptr<int>(), kernel_indices.data_ptr<int>(),
-            total_threads);
-  }));
+            static_cast<scalar_t>(alpha),
+            H, W, kH, kW, stride);
+    }));
+    cudaDeviceSynchronize();
 
-  return {grad_input, grad_kernel};
+    return {grad_input, grad_kernel};
 }
