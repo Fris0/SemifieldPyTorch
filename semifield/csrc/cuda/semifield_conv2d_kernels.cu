@@ -328,7 +328,7 @@ std::vector<at::Tensor> min_plus_cuda_backward(
 
 // Smooth Max
 template <typename scalar_t>
-__global__ void smoothmax_cuda_forward_kernel(
+__global__ void smooth_max_cuda_forward_kernel(
     struct OutputRegion region,
     const int batch_size,
     const int in_channels,
@@ -346,34 +346,49 @@ __global__ void smoothmax_cuda_forward_kernel(
     int oc, n, y, x;
     region.decode(idx, batch_size, out_channels, stride, oc, n, y, x);
 
-    scalar_t max_s = std::numeric_limits<scalar_t>::lowest();
-    scalar_t sum_exp = 0.0;
-
     int x_offset = (kW % 2 == 0) ? 0 : kW / 2;
     int y_offset = (kH % 2 == 0) ? 0 : kH / 2;
 
-    for (int ic = 0; ic < in_channels; ++ic){
-        for (int dy = 0; dy < kH; ++dy){
-            for (int dx = 0; dx < kW; ++dx){
+    // Find max_s for numerical stability
+    scalar_t max_s = -INFINITY;
+    for (int ic = 0; ic < in_channels; ++ic) {
+        for (int dy = 0; dy < kH; ++dy) {
+            for (int dx = 0; dx < kW; ++dx) {
                 int at_y = y + dy - y_offset;
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
                 int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
-
                 scalar_t s = input[val_idx] + kernel[kval_idx];
-                scalar_t exp_s = expf(alpha * s);
 
-                if (s > max_s) max_s = s;
-                sum_exp += exp_s;
+                if (s > max_s){
+                    max_s = s;
+                }
             }
         }
     }
-    output[idx] = (1.0f / alpha) * logf(sum_exp);
+
+    // Accumulate exponential sum
+    scalar_t sum_exp = 0.0;
+    for (int ic = 0; ic < in_channels; ++ic) {
+        for (int dy = 0; dy < kH; ++dy) {
+            for (int dx = 0; dx < kW; ++dx) {
+                int at_y = y + dy - y_offset;
+                int at_x = x + dx - x_offset;
+
+                int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
+                int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
+                scalar_t s = input[val_idx] + kernel[kval_idx];
+                sum_exp += expf(alpha * (s - max_s));
+            }
+        }
+    }
+
+    output[idx] = (1.0f / alpha) * (logf(sum_exp) + alpha * max_s);
 }
 
 // Kernel launch wrapper, adjusting from your existing function
-std::vector<at::Tensor> smoothmax_cuda_forward(
+std::vector<at::Tensor> smooth_max_cuda_forward(
     const int batch_size,
     const int in_channels, const int out_channels,
     const at::Tensor& input, const at::Tensor& kernel,
@@ -396,7 +411,7 @@ std::vector<at::Tensor> smoothmax_cuda_forward(
     struct OutputRegion region = {output_h, output_w, y_start, x_start};
 
     AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "smoothmax_cuda_forward", ([&] {
-        smoothmax_cuda_forward_kernel<scalar_t><<<blocks, threads_per_block>>>(
+        smooth_max_cuda_forward_kernel<scalar_t><<<blocks, threads_per_block>>>(
             region, batch_size, in_channels, out_channels,
             input.data_ptr<scalar_t>(), kernel.data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),
@@ -409,7 +424,7 @@ std::vector<at::Tensor> smoothmax_cuda_forward(
 }
 
 template <typename scalar_t>
-__global__ void smoothmax_cuda_backward_kernel(
+__global__ void smooth_max_cuda_backward_kernel(
     struct OutputRegion region,
     const int batch_size,
     const int in_channels,
@@ -419,10 +434,10 @@ __global__ void smoothmax_cuda_backward_kernel(
     const scalar_t* kernel,
     scalar_t* grad_input,
     scalar_t* grad_kernel,
-    const scalar_t alpha,
     int H, int W,
     int kH, int kW,
-    const int stride)
+    const int stride,
+    const scalar_t alpha)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= batch_size * region.output_h * region.output_w * out_channels) return;
@@ -430,16 +445,11 @@ __global__ void smoothmax_cuda_backward_kernel(
     int oc, n, y, x;
     region.decode(idx, batch_size, out_channels, stride, oc, n, y, x);
 
-    scalar_t max_s = -INFINITY;
-    const int max_kernel_elems = 256;
-    scalar_t s_vals[max_kernel_elems];
-    int val_idxs[max_kernel_elems];
-    int kval_idxs[max_kernel_elems];
-    int counter = 0;
-
     int x_offset = (kW % 2 == 0) ? 0 : kW / 2;
     int y_offset = (kH % 2 == 0) ? 0 : kH / 2;
 
+    // Find max s value for all
+    scalar_t max_s = -INFINITY;
     for (int ic = 0; ic < in_channels; ++ic){
         for (int dy = 0; dy < kH; ++dy){
             for (int dx = 0; dx < kW; ++dx){
@@ -449,34 +459,52 @@ __global__ void smoothmax_cuda_backward_kernel(
                 int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
                 int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
 
-                scalar_t s = input[val_idx] + kernel[kval_idx];
-                s_vals[counter] = s;
-                val_idxs[counter] = val_idx;
-                kval_idxs[counter] = kval_idx;
-
-                if (s > max_s) max_s = s;
-                counter++;
+                scalar_t s = kernel[kval_idx] + input[val_idx];
+                if (s > max_s){
+                    max_s = s;
+                }
             }
         }
     }
 
+    // Accumulate exponential sum
     scalar_t sum_exp = 0.0;
-    for (int i = 0; i < counter; ++i) {
-        sum_exp += expf(alpha * (s_vals[i] - max_s));
+    for (int ic = 0; ic < in_channels; ++ic) {
+        for (int dy = 0; dy < kH; ++dy) {
+            for (int dx = 0; dx < kW; ++dx) {
+                int at_y = y + dy - y_offset;
+                int at_x = x + dx - x_offset;
+
+                int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
+                int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
+                scalar_t s = input[val_idx] + kernel[kval_idx];
+                sum_exp += expf(alpha * (s - max_s));
+            }
+        }
     }
 
-    scalar_t go = grad_output[idx];
+    for (int ic = 0; ic < in_channels; ++ic) {
+        for (int dy = 0; dy < kH; ++dy) {
+            for (int dx = 0; dx < kW; ++dx) {
+                int at_y = y + dy - y_offset;
+                int at_x = x + dx - x_offset;
 
-    for (int i = 0; i < counter; ++i) {
-        scalar_t p = expf(alpha * (s_vals[i] - max_s)) / sum_exp;
-        scalar_t grad = go * p;
+                int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
+                int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
 
-        atomicAdd(&grad_input[val_idxs[i]], grad);
-        atomicAdd(&grad_kernel[kval_idxs[i]], grad);
+                scalar_t s = input[val_idx] + kernel[kval_idx];
+                scalar_t p = expf(alpha * (s - max_s)) / sum_exp;
+
+                scalar_t grad = grad_output[idx] * p;
+
+                atomicAdd(&grad_input[val_idx], grad);
+                atomicAdd(&grad_kernel[kval_idx], grad);
+            }
+        }
     }
 }
 
-std::vector<at::Tensor> smoothmax_cuda_backward(
+std::vector<at::Tensor> smooth_max_cuda_backward(
     const int batch_size, const int in_channels, const int out_channels,
     const at::Tensor& grad_output,
     const at::Tensor& input, const at::Tensor& kernel,
@@ -493,7 +521,7 @@ std::vector<at::Tensor> smoothmax_cuda_backward(
     int output_h = (H - kH) / stride + 1;
     int output_w = (W - kW) / stride + 1;
 
-    int total_threads = batch_size * out_channels * output_h * output_w;
+    int total_threads = grad_output.numel();
     int threads_per_block = 128;
     int blocks = (total_threads + threads_per_block - 1) / threads_per_block;
 
@@ -502,13 +530,19 @@ std::vector<at::Tensor> smoothmax_cuda_backward(
                                   start_x};
 
     AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "smoothmax_cuda_backward", ([&] {
-        smoothmax_cuda_backward_kernel<scalar_t><<<blocks, threads_per_block>>>(
-            region, batch_size, in_channels, out_channels,
+        smooth_max_cuda_backward_kernel<scalar_t><<<blocks, threads_per_block>>>(
+            region,
+            batch_size,
+            in_channels,
+            out_channels,
             grad_output.data_ptr<scalar_t>(),
-            input.data_ptr<scalar_t>(), kernel.data_ptr<scalar_t>(),
-            grad_input.data_ptr<scalar_t>(), grad_kernel.data_ptr<scalar_t>(),
-            static_cast<scalar_t>(alpha),
-            H, W, kH, kW, stride);
+            input.data_ptr<scalar_t>(),
+            kernel.data_ptr<scalar_t>(),
+            grad_input.data_ptr<scalar_t>(),
+            grad_kernel.data_ptr<scalar_t>(),
+            H, W,
+            kH, kW,
+            stride, static_cast<scalar_t>(alpha));
     }));
     cudaDeviceSynchronize();
 

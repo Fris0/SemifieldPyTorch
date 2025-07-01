@@ -10,7 +10,7 @@ input.requires_grad = True
 print("INPUT:", input)
 
 # Fixed kernel with known dtype and device
-conv = SemiConv2d(in_channels=1, out_channels=1, semifield_type="MinPlus", kernel_size=3, stride=1)
+conv = SemiConv2d(in_channels=1, out_channels=3, semifield_type="SmoothMax", kernel_size=3, stride=1)
 
 # Run forward
 output = conv(input)

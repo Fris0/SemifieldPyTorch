@@ -56,7 +56,7 @@ std::vector<at::Tensor> min_plus_backward(const int in_channels, const int out_c
 }
 
 // Smooth Max
-std::vector<at::Tensor> smooth_max_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const int alpha){
+std::vector<at::Tensor> smooth_max_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const float alpha){
     // Get sizes of input
     auto input_sizes = input.sizes();
 
@@ -76,9 +76,22 @@ std::vector<at::Tensor> smooth_max_forward(const int in_channels, const int out_
     return smooth_max_cuda_forward(batch_size, in_channels, out_channels, input, kernel, H, W, kH, kW, stride, alpha);
 }
 
-std::vector<at::Tensor> smooth_max_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const at::Tensor& input_indices, const at::Tensor& kernel_indices, const int alpha){
-    // Return the result from the cuda kernel
-    return smooth_max_cuda_backward(in_channels, out_channels, grad_output, input, kernel, input_indices, kernel_indices, alpha);
+std::vector<at::Tensor> smooth_max_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const int stride, const float alpha){
+    // Get sizes of input
+    auto input_sizes = input.sizes();
+
+    // Batch size
+    const int batch_size = input_sizes[0];
+
+    // Input Dimensions
+    const int H = input_sizes[2];
+    const int W = input_sizes[3];
+
+	// Get sizes of kernel
+    auto kernel_sizes = kernel.sizes();
+    const int kH = kernel_sizes[2];
+    const int kW = kernel_sizes[3];
+    return smooth_max_cuda_backward(batch_size, in_channels, out_channels, grad_output, input, kernel, H, W, kH, kW, stride, alpha);
 }
 
 //Register the C++ functions in the torch::library

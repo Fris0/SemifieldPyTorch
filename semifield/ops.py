@@ -30,7 +30,7 @@ def make_contiguous(one, two):
     """
     return one.contiguous(), two.contiguous()
 
-def save_ctx_tensors(ctx, input_contig, kernel_contig, input_indices, kernel_indices, in_channels, out_channels, alpha=0):
+def save_ctx_tensors(ctx, input_contig, kernel_contig, input_indices, kernel_indices, in_channels, out_channels):
     """
     Store values required for backward in ctx class as attributes.
 
@@ -41,7 +41,6 @@ def save_ctx_tensors(ctx, input_contig, kernel_contig, input_indices, kernel_ind
     ctx.save_for_backward(input_contig, kernel_contig, input_indices, kernel_indices)
     ctx.in_channels = in_channels
     ctx.out_channels = out_channels
-    ctx.alpha = alpha
 
 class MaxMin(torch.autograd.Function):
     """
@@ -191,22 +190,21 @@ class SmoothMax(torch.autograd.Function):
         input_contig, kernel_contig = make_contiguous(input, kernel)
 
         # Do forward and store output for consequent steps and indicees for backward
-        output, input_indices, kernel_indices = conv2d.smooth_max_forward(
-                                                in_channels,
-                                                out_channels,
-                                                input_contig,
-                                                kernel_contig,
-                                                stride,
-                                                alpha
-                                                )
-
-        # Make indicees contiguous
-        input_indices, kernel_indices = make_contiguous(input_indices, kernel_indices)
+        output = conv2d.smooth_max_forward(
+                                            in_channels,
+                                            out_channels,
+                                            input_contig,
+                                            kernel_contig,
+                                            stride,
+                                            alpha
+                                            )[0]
 
         # Save indicees of X and Kernel where max was found
-        save_ctx_tensors(ctx, input_contig, kernel_contig,
-                         input_indices, kernel_indices, in_channels,
-                         out_channels, alpha)
+        ctx.save_for_backward(input_contig, kernel_contig)
+        ctx.in_channels = in_channels
+        ctx.out_channels = out_channels
+        ctx.stride = stride
+        ctx.alpha = alpha
 
         return output
 
@@ -216,9 +214,11 @@ class SmoothMax(torch.autograd.Function):
         grad_output_contig = grad_output.contiguous()
 
         # Retrieve saved tensors and params for backward
-        input_contig, kernel_contig, input_indices, kernel_indices = ctx.saved_tensors
+        input_contig, kernel_contig = ctx.saved_tensors
         in_channels = ctx.in_channels
         out_channels = ctx.out_channels
+        stride = ctx.stride
+        alpha = ctx.alpha
 
         # Calculate the gradients with respect to the input and kernel
         grad_input, grad_kernel = conv2d.smooth_max_backward(
@@ -227,11 +227,11 @@ class SmoothMax(torch.autograd.Function):
                                                         grad_output_contig,
                                                         input_contig,
                                                         kernel_contig,
-                                                        input_indices,
-                                                        kernel_indices)
+                                                        stride,
+                                                        alpha)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
-        return None, None, grad_input, grad_kernel, None  # Return size has to be equal to input size of kernel
+        return None, None, grad_input, grad_kernel, None, None # Return size has to be equal to input size of kernel
 
 class SemiConv2d(torch.nn.Module):
     """
@@ -256,7 +256,7 @@ class SemiConv2d(torch.nn.Module):
     Calls the MaxMin or MinPlus semifield convolution wrappers.
     """
 
-    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=0):
+    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=2.0):
         super().__init__()
         # Variables that define output shape
         self.in_channels = in_channels
@@ -264,9 +264,9 @@ class SemiConv2d(torch.nn.Module):
         self.stride = stride
 
         # Only used during SmoothMax semifield conovolution
-        self.alpha = alpha
+        self.alpha = float(alpha)
 
-        if self.alpha < 0:
+        if self.alpha < 0.0:
             raise ValueError("Alpha should be greater then 0")
 
         # instance variables required for convolution
