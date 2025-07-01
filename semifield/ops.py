@@ -306,36 +306,55 @@ class SemiConv2d(torch.nn.Module):
             case "MaxMin":
                 # Pad input then pass it including kernel and padding
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('-inf'))
-                return MaxMin.apply(
-                                    self.in_channels,
-                                    self.out_channels,
-                                    input,
-                                    self.kernel,
-                                    self.stride,
-                )
+                if input.requires_grad:
+                    return MaxMin.apply(
+                                        self.in_channels,
+                                        self.out_channels,
+                                        input,
+                                        self.kernel,
+                                        self.stride,
+                    )
+                else:
+                    SemiConv2d.max_min_inference(self.in_channels,
+                                                 self.out_channels,
+                                                 input,
+                                                 self.kernel,
+                                                 self.stride)[0]
             case "MinPlus":
                 # Pad input then pass it including kernel and padding
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('inf'))
-                return MinPlus.apply(
-                                    self.in_channels,
-                                    self.out_channels,
-                                    input,
-                                    self.kernel,
-                                    self.stride,
-                )
+                if input.requires_grad:
+                    return MinPlus.apply(
+                                        self.in_channels,
+                                        self.out_channels,
+                                        input,
+                                        self.kernel,
+                                        self.stride,
+                    )
+                else:
+                    return SemiConv2d.min_plus_inference(self.in_channels,
+                                                         self.out_channels,
+                                                         input,
+                                                         self.kernel,
+                                                         self.stride)[0]
             case "SmoothMax":
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('-inf'))
-                return SmoothMax.apply(
-                                    self.in_channels,
-                                    self.out_channels,
-                                    input,
-                                    self.kernel,
-                                    self.stride,
-                                    self.alpha
-                )
+                if input.requires_grad:
+                    return SmoothMax.apply(
+                                        self.in_channels,
+                                        self.out_channels,
+                                        input,
+                                        self.kernel,
+                                        self.stride,
+                                        self.alpha
+                    )
+                else:
+                    return SemiConv2d.smooth_max_forward(self.in_channels, self.out_channels,
+                                                        input.contiguous(), self.kernel.contiguous(),
+                                                        self.stride, self.alpha)[0]
 
             case _:
-                raise ValueError(f"Expected MaxMin or MinPlus but got {self.semifield}.")
+                raise ValueError(f"Expected MaxMin, MinPlus or SmoothMax but received a {self.semifield}.")
 
     def unsqueeze_4d(self, input):
         """

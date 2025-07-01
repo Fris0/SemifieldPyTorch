@@ -3,25 +3,39 @@
 #include <iostream>
 #include "semifield_conv2d.h"
 
-// Max Min
-std::vector<at::Tensor> max_min_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride) {
-    // Get sizes of input
+struct Conv2DParams {
+    int batch_size;
+    int H, W;
+    int kH, kW;
+};
+
+inline Conv2DParams extract_conv2d_params(const at::Tensor& input, const at::Tensor& kernel) {
     auto input_sizes = input.sizes();
-
-    // Batch size
-    const int batch_size = input_sizes[0];
-
-    // Input Dimensions
-    const int H = input_sizes[2];
-    const int W = input_sizes[3];
-
-	// Get sizes of kernel
     auto kernel_sizes = kernel.sizes();
-    const int kH = kernel_sizes[2];
-    const int kW = kernel_sizes[3];
+
+    return {
+        static_cast<int>(input_sizes[0]),
+        static_cast<int>(input_sizes[2]),
+        static_cast<int>(input_sizes[3]),
+        static_cast<int>(kernel_sizes[2]),
+        static_cast<int>(kernel_sizes[3])
+    };
+}
+
+// Max Min
+std::vector<at::Tensor> max_min_inference(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride) {
+    // Get batchsize, H, W .., from input and kernel
+    Conv2DParams p = extract_conv2d_params(input, kernel);
 
     // Return the result from the cuda kernel: output and indicees
-    return max_min_cuda_forward(batch_size, in_channels, out_channels, input, kernel, H, W, kH, kW, stride);
+    return max_min_cuda_inference(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride);
+}
+
+std::vector<at::Tensor> max_min_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride) {
+    Conv2DParams p = extract_conv2d_params(input, kernel);
+
+    // Return the result from the cuda kernel: output and indicees
+    return max_min_cuda_forward(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride);
 }
 
 std::vector<at::Tensor> max_min_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const at::Tensor& input_indices, const at::Tensor& kernel_indices) {
@@ -30,24 +44,18 @@ std::vector<at::Tensor> max_min_backward(const int in_channels, const int out_ch
 }
 
 // Min Plus
-std::vector<at::Tensor> min_plus_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride) {
-    // Get sizes of input
-    auto input_sizes = input.sizes();
-
-    // Batch size
-    const int batch_size = input_sizes[0];
-
-    // Input Dimensions
-    const int H = input_sizes[2];
-    const int W = input_sizes[3];
-
-	// Get sizes of kernel
-    auto kernel_sizes = kernel.sizes();
-    const int kH = kernel_sizes[2];
-    const int kW = kernel_sizes[3];
+std::vector<at::Tensor> min_plus_inference(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride) {
+    Conv2DParams p = extract_conv2d_params(input, kernel);
 
     // Return the result from the cuda kernel: output and indicees
-    return min_plus_cuda_forward(batch_size, in_channels, out_channels, input, kernel, H, W, kH, kW, stride);
+    return min_plus_cuda_inference(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride);
+}
+
+std::vector<at::Tensor> min_plus_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride) {
+    Conv2DParams p = extract_conv2d_params(input, kernel);
+
+    // Return the result from the cuda kernel: output and indicees
+    return min_plus_cuda_forward(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride);
 }
 
 std::vector<at::Tensor> min_plus_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const at::Tensor& input_indices, const at::Tensor& kernel_indices) {
@@ -57,41 +65,17 @@ std::vector<at::Tensor> min_plus_backward(const int in_channels, const int out_c
 
 // Smooth Max
 std::vector<at::Tensor> smooth_max_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const float alpha){
-    // Get sizes of input
-    auto input_sizes = input.sizes();
-
-    // Batch size
-    const int batch_size = input_sizes[0];
-
-    // Input Dimensions
-    const int H = input_sizes[2];
-    const int W = input_sizes[3];
-
-	// Get sizes of kernel
-    auto kernel_sizes = kernel.sizes();
-    const int kH = kernel_sizes[2];
-    const int kW = kernel_sizes[3];
+    Conv2DParams p = extract_conv2d_params(input, kernel);
 
     // Return the result from the cuda kernel
-    return smooth_max_cuda_forward(batch_size, in_channels, out_channels, input, kernel, H, W, kH, kW, stride, alpha);
+    return smooth_max_cuda_forward(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride, alpha);
 }
 
 std::vector<at::Tensor> smooth_max_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const int stride, const float alpha){
-    // Get sizes of input
-    auto input_sizes = input.sizes();
+    Conv2DParams p = extract_conv2d_params(input, kernel);
 
-    // Batch size
-    const int batch_size = input_sizes[0];
-
-    // Input Dimensions
-    const int H = input_sizes[2];
-    const int W = input_sizes[3];
-
-	// Get sizes of kernel
-    auto kernel_sizes = kernel.sizes();
-    const int kH = kernel_sizes[2];
-    const int kW = kernel_sizes[3];
-    return smooth_max_cuda_backward(batch_size, in_channels, out_channels, grad_output, input, kernel, H, W, kH, kW, stride, alpha);
+    // Return the result from cuda
+    return smooth_max_cuda_backward(p.batch_size, in_channels, out_channels, grad_output, input, kernel, p.H, p.W, p.kH, p.kW, stride, alpha);
 }
 
 //Register the C++ functions in the torch::library
