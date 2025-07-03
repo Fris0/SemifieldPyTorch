@@ -32,7 +32,8 @@ std::vector<at::Tensor> min_plus_cuda_forward(
     const int W,
     const int kH,
     const int kW,
-    const int stride);
+    const int stride,
+    const int groups);
 
 std::vector<torch::Tensor> min_plus_cuda_backward(
     const int in_channels,
@@ -54,7 +55,8 @@ std::vector<at::Tensor> smooth_max_cuda_forward(
     const int kH,
     const int kW,
     const int stride,
-    const float alpha);
+    const float alpha,
+    const int groups);
 
 std::vector<torch::Tensor> smooth_max_cuda_backward(
     const int batch_size,
@@ -68,4 +70,5 @@ std::vector<torch::Tensor> smooth_max_cuda_backward(
     const int kH,
     const int kW,
     const int stride,
-    const float alpha);
+    const float alpha,
+    const int groups);

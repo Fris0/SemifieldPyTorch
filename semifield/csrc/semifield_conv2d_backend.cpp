@@ -36,11 +36,11 @@ std::vector<at::Tensor> max_min_backward(const int in_channels, const int out_ch
 }
 
 // Min Plus
-std::vector<at::Tensor> min_plus_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride) {
+std::vector<at::Tensor> min_plus_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const int groups) {
     Conv2DParams p = extract_conv2d_params(input, kernel);
 
     // Return the result from the cuda kernel: output and indicees
-    return min_plus_cuda_forward(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride);
+    return min_plus_cuda_forward(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride, groups);
 }
 
 std::vector<at::Tensor> min_plus_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const at::Tensor& input_indices, const at::Tensor& kernel_indices) {
@@ -49,18 +49,18 @@ std::vector<at::Tensor> min_plus_backward(const int in_channels, const int out_c
 }
 
 // Smooth Max
-std::vector<at::Tensor> smooth_max_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const float alpha){
+std::vector<at::Tensor> smooth_max_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const float alpha, const int groups){
     Conv2DParams p = extract_conv2d_params(input, kernel);
 
     // Return the result from the cuda kernel vector with one output tensor
-    return smooth_max_cuda_forward(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride, alpha);
+    return smooth_max_cuda_forward(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride, alpha, groups);
 }
 
-std::vector<at::Tensor> smooth_max_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const int stride, const float alpha){
+std::vector<at::Tensor> smooth_max_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const int stride, const float alpha, const int groups){
     Conv2DParams p = extract_conv2d_params(input, kernel);
 
     // Return the result from cuda
-    return smooth_max_cuda_backward(p.batch_size, in_channels, out_channels, grad_output, input, kernel, p.H, p.W, p.kH, p.kW, stride, alpha);
+    return smooth_max_cuda_backward(p.batch_size, in_channels, out_channels, grad_output, input, kernel, p.H, p.W, p.kH, p.kW, stride, alpha, groups);
 }
 
 //Register the C++ functions in the torch::library

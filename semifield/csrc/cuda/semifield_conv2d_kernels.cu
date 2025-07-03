@@ -136,8 +136,6 @@ std::vector<at::Tensor> max_min_cuda_forward(
           );
         }
     ));
-    cudaDeviceSynchronize();
-
     return {output, input_indices, kernel_indices};
 }
 
@@ -200,29 +198,40 @@ __global__ void min_plus_cuda_forward_kernel(
     int* input_indices, int* kernel_indices,
     int H, int W,
     int kH, int kW,
-    const int stride)
+    const int stride,
+    const int groups)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= batch_size * region.output_h * region.output_w * out_channels) return;
 
+    // Calculate current oc, batch and x,y position in input
     int oc, n, y, x;
     region.decode(idx, batch_size, out_channels, stride, oc, n, y, x);
-    
+
+    // Find current group index
+    int out_per_group = out_channels / groups;
+    int group_idx = oc / out_per_group;
+
+    // Calculate in_channels per group
+    int in_channels_per_group = in_channels / groups;
+
+    // Initialize values
     scalar_t min_val = std::numeric_limits<scalar_t>::max();
     int min_idx = -1;
     int min_kernel_idx = -1;
 
+    // Find offset
     int x_offset = (kW % 2 == 0) ? 0 : kW / 2;
     int y_offset = (kH % 2 == 0) ? 0 : kH / 2;
 
-    for (int ic = 0; ic < in_channels; ++ic){
+    for (int ic = 0; ic < in_channels_per_group; ++ic){
         for (int dy = 0; dy < kH; ++dy){
             for (int dx = 0; dx < kW; ++dx){
                 int at_y = y + dy - y_offset;
                 int at_x = x + dx - x_offset;
 
-                int val_idx  = n * in_channels * H * W + ic * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels * kH * kW + ic * kH * kW + dy * kW + dx;
+                int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
                 scalar_t val = input[val_idx];
                 scalar_t kval = kernel[kval_idx];
 
@@ -246,7 +255,8 @@ std::vector<at::Tensor> min_plus_cuda_forward(
     const at::Tensor& input, const at::Tensor& kernel,
     const int H, const int W,
     const int kH, const int kW,
-    const int stride)
+    const int stride,
+    const int groups)
     {
     // Center for kernel. For odd- and even kernels.
     int y_start = (kH % 2 == 0) ? 0 : kH / 2;
@@ -284,12 +294,11 @@ std::vector<at::Tensor> min_plus_cuda_forward(
             kernel_indices.data_ptr<int>(),
             H, W,
             kH, kW,
-            stride
+            stride,
+            groups
           );
         }
     ));
-    cudaDeviceSynchronize();
-
     return {output, input_indices, kernel_indices};
 }
 
@@ -409,7 +418,8 @@ std::vector<at::Tensor> smooth_max_cuda_forward(
     const int H, const int W,
     const int kH, const int kW,
     const int stride,
-    const float alpha) {
+    const float alpha,
+    const int groups) {
 
     int y_start = (kH % 2 == 0) ? 0 : kH / 2;
     int x_start = (kW % 2 == 0) ? 0 : kW / 2;
@@ -432,8 +442,6 @@ std::vector<at::Tensor> smooth_max_cuda_forward(
             static_cast<scalar_t>(alpha),
             H, W, kH, kW, stride);
     }));
-    cudaDeviceSynchronize();
-
     return {output};
 }
 
@@ -525,7 +533,8 @@ std::vector<at::Tensor> smooth_max_cuda_backward(
     const int H, const int W,
     const int kH, const int kW,
     const int stride,
-    const float alpha) {
+    const float alpha,
+    const int groups) {
 
     at::Tensor grad_input  = torch::zeros_like(input);
     at::Tensor grad_kernel = torch::zeros_like(kernel);
@@ -558,7 +567,5 @@ std::vector<at::Tensor> smooth_max_cuda_backward(
             kH, kW,
             stride, static_cast<scalar_t>(alpha));
     }));
-    cudaDeviceSynchronize();
-
     return {grad_input, grad_kernel};
 }

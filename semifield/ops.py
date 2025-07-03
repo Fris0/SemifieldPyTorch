@@ -136,7 +136,7 @@ class MinPlus(torch.autograd.Function):
     the indicees and output contiguous tensor.
     """    
     @staticmethod
-    def forward(ctx, in_channels, out_channels, input, kernel, stride):
+    def forward(ctx, in_channels, out_channels, input, kernel, stride, groups):
 
         # Make input and kernel contiguous in memory for CUDA.
         input_contig, kernel_contig = make_contiguous(input, kernel)
@@ -147,7 +147,8 @@ class MinPlus(torch.autograd.Function):
                                                 out_channels,
                                                 input_contig,
                                                 kernel_contig,
-                                                stride
+                                                stride,
+                                                groups
                                                 )
 
         # Make indicees contiguous
@@ -181,11 +182,11 @@ class MinPlus(torch.autograd.Function):
                                                         kernel_indices)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
-        return None, None, grad_input, grad_kernel, None  # Return size has to be equal to input size of kernel
+        return None, None, grad_input, grad_kernel, None, None  # Return size has to be equal to input size of kernel
 
 class SmoothMax(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, in_channels, out_channels, input, kernel, stride, alpha):
+    def forward(ctx, in_channels, out_channels, input, kernel, stride, alpha, groups):
 
         # Make input and kernel contiguous in memory for CUDA.
         input_contig, kernel_contig = make_contiguous(input, kernel)
@@ -197,7 +198,8 @@ class SmoothMax(torch.autograd.Function):
                                             input_contig,
                                             kernel_contig,
                                             stride,
-                                            alpha
+                                            alpha,
+                                            groups
                                             )[0]
 
         # Save indicees of X and Kernel where max was found
@@ -206,6 +208,7 @@ class SmoothMax(torch.autograd.Function):
         ctx.out_channels = out_channels
         ctx.stride = stride
         ctx.alpha = alpha
+        ctx.groups = groups
 
         return output
 
@@ -220,6 +223,7 @@ class SmoothMax(torch.autograd.Function):
         out_channels = ctx.out_channels
         stride = ctx.stride
         alpha = ctx.alpha
+        groups = ctx.groups
 
         # Calculate the gradients with respect to the input and kernel
         grad_input, grad_kernel = conv2d.smooth_max_backward(
@@ -229,10 +233,11 @@ class SmoothMax(torch.autograd.Function):
                                                         input_contig,
                                                         kernel_contig,
                                                         stride,
-                                                        alpha)
+                                                        alpha,
+                                                        groups)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
-        return None, None, grad_input, grad_kernel, None, None # Return size has to be equal to input size of kernel
+        return None, None, grad_input, grad_kernel, None, None, None # Return size has to be equal to input size of kernel
 
 class SemiConv2d(torch.nn.Module):
     """
@@ -279,8 +284,7 @@ class SemiConv2d(torch.nn.Module):
         if self.alpha < 0.0:
             raise ValueError("Alpha should be greater then 0")
 
-        # instance variables required for convolution
-        self.kernel = None  # Lazy init
+        self.kernel = None
         self.padding = None # Lazy init
         self.kernel_size = kernel_size
 
@@ -290,11 +294,6 @@ class SemiConv2d(torch.nn.Module):
     def forward(self, input):
         # Ensure right dimension
         input = self.unsqueeze_4d(input)
-
-        # Ensure grad
-        grad_on = input.requires_grad == True
-        if (not grad_on):
-            raise TypeError("Input doesn't have requires grad on.")
 
         # Create kernel with same dtype as input for proper cuda-kernel functioning.
         if self.kernel == None:
@@ -326,7 +325,7 @@ class SemiConv2d(torch.nn.Module):
                                         self.groups
                     )
                 else:
-                    SemiConv2d.max_min_forward(self.in_channels,
+                    return conv2d.max_min_forward(self.in_channels,
                                                  self.out_channels,
                                                  input,
                                                  self.kernel,
@@ -342,13 +341,15 @@ class SemiConv2d(torch.nn.Module):
                                         input,
                                         self.kernel,
                                         self.stride,
+                                        self.groups
                     )
                 else:
-                    return SemiConv2d.min_plus_forward(self.in_channels,
+                    return conv2d.min_plus_forward(self.in_channels,
                                                          self.out_channels,
                                                          input,
                                                          self.kernel,
-                                                         self.stride)[0]
+                                                         self.stride,
+                                                         self.groups)[0]
             case "SmoothMax":
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('-inf'))
                 if input.requires_grad:
@@ -358,12 +359,13 @@ class SemiConv2d(torch.nn.Module):
                                         input,
                                         self.kernel,
                                         self.stride,
-                                        self.alpha
+                                        self.alpha,
+                                        self.groups
                     )
                 else:
-                    return SemiConv2d.smooth_max_forward(self.in_channels, self.out_channels,
+                    return conv2d.smooth_max_forward(self.in_channels, self.out_channels,
                                                         input.contiguous(), self.kernel.contiguous(),
-                                                        self.stride, self.alpha)[0]
+                                                        self.stride, self.alpha, self.groups)[0]
 
             case _:
                 raise ValueError(f"Expected MaxMin, MinPlus or SmoothMax but received a {self.semifield}.")
