@@ -65,7 +65,7 @@ class MaxMin(torch.autograd.Function):
     the indicees and output contiguous tensor.
     """    
     @staticmethod
-    def forward(ctx, in_channels, out_channels, input, kernel, stride):
+    def forward(ctx, in_channels, out_channels, input, kernel, stride, groups):
 
         # Make input and kernel contiguous in memory for CUDA.
         input_contig, kernel_contig = make_contiguous(input, kernel)
@@ -76,7 +76,8 @@ class MaxMin(torch.autograd.Function):
                                                 out_channels,
                                                 input_contig,
                                                 kernel_contig,
-                                                stride
+                                                stride,
+                                                groups
                                                 )
 
         # Make indicees contiguous
@@ -110,7 +111,7 @@ class MaxMin(torch.autograd.Function):
                                                         kernel_indices)
         
         # Return the grad outputs. Pytorch will update self.kernel of SemiConv2d.
-        return None, None, grad_input, grad_kernel, None  # Return size has to be equal to input size of kernel
+        return None, None, grad_input, grad_kernel, None, None # Return size has to be equal to input size of kernel
 
 class MinPlus(torch.autograd.Function):
     """
@@ -251,17 +252,26 @@ class SemiConv2d(torch.nn.Module):
     semifield_type = MaxMin or MinPlus
     kernel_size  = Tuple of shape of the kernel (W, H)
     stride  = the spacing between each convolution
+    groups = splits in_channels over groups
 
     Side-effects:
     Calls the MaxMin or MinPlus semifield convolution wrappers.
     """
 
-    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=2.0):
+    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=2.0, groups=1):
         super().__init__()
         # Variables that define output shape
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.stride = stride
+
+        # Groups where groups equal in_channels causes pooling
+        self.groups = groups
+
+        if in_channels % groups != 0 or out_channels % groups != 0:
+            raise ValueError("in_channels and out_channels must be divisible by groups.")
+
+        self.channels_per_group = in_channels // groups
 
         # Only used during SmoothMax semifield conovolution
         self.alpha = float(alpha)
@@ -286,11 +296,11 @@ class SemiConv2d(torch.nn.Module):
         if (not grad_on):
             raise TypeError("Input doesn't have requires grad on.")
 
-        # Creat kernel with same dtype as input for proper cuda-kernel functioning.
+        # Create kernel with same dtype as input for proper cuda-kernel functioning.
         if self.kernel == None:
             self.kernel = torch.nn.Parameter(torch.zeros(
                 self.out_channels,
-                self.in_channels,
+                self.channels_per_group,
                 self.kernel_size,
                 self.kernel_size,
                 device=input.device,
@@ -313,13 +323,15 @@ class SemiConv2d(torch.nn.Module):
                                         input,
                                         self.kernel,
                                         self.stride,
+                                        self.groups
                     )
                 else:
-                    SemiConv2d.max_min_inference(self.in_channels,
+                    SemiConv2d.max_min_forward(self.in_channels,
                                                  self.out_channels,
                                                  input,
                                                  self.kernel,
-                                                 self.stride)[0]
+                                                 self.stride,
+                                                 self.groups)[0]
             case "MinPlus":
                 # Pad input then pass it including kernel and padding
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('inf'))
@@ -332,7 +344,7 @@ class SemiConv2d(torch.nn.Module):
                                         self.stride,
                     )
                 else:
-                    return SemiConv2d.min_plus_inference(self.in_channels,
+                    return SemiConv2d.min_plus_forward(self.in_channels,
                                                          self.out_channels,
                                                          input,
                                                          self.kernel,
