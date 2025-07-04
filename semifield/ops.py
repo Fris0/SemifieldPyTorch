@@ -325,7 +325,7 @@ class SemiConv2d(torch.nn.Module):
                                         self.groups
                     )
                 else:
-                    return conv2d.max_min_forward(self.in_channels,
+                    return conv2d.max_min_inference(self.in_channels,
                                                  self.out_channels,
                                                  input,
                                                  self.kernel,
@@ -344,7 +344,7 @@ class SemiConv2d(torch.nn.Module):
                                         self.groups
                     )
                 else:
-                    return conv2d.min_plus_forward(self.in_channels,
+                    return conv2d.min_plus_inference(self.in_channels,
                                                          self.out_channels,
                                                          input,
                                                          self.kernel,

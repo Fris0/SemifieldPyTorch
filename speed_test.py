@@ -30,124 +30,40 @@ semi = SemiConv2d(
     groups=channels  # MaxPool behavior
 )
 
-# Time SemiConv
-torch.cuda.synchronize()
-start = torch.cuda.Event(enable_timing=True)
-end = torch.cuda.Event(enable_timing=True)
+semi_avg = 0
+max_avg = 0
+for i in range(1000):  
+    # Time SemiConv
+    torch.cuda.synchronize()
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
 
-start.record()
-out_semi = semi(input)
-loss_semi = out_semi.sum()
-loss_semi.backward()
-end.record()
-torch.cuda.synchronize()
-semi_time = start.elapsed_time(end)  # ms
+    start.record()
+    out_semi = semi(input)
+    loss_semi = out_semi.sum()
+    loss_semi.backward()
+    end.record()
+    torch.cuda.synchronize()
+    semi_time = start.elapsed_time(end)  # ms
 
-# --- PyTorch MaxPool ---
-input2 = input.detach().clone().requires_grad_()
-pool = torch.nn.MaxPool2d(kernel_size=kernel_size, stride=stride)
+    # --- PyTorch MaxPool ---
+    input2 = input.detach().clone().requires_grad_()
+    pool = torch.nn.MaxPool2d(kernel_size=kernel_size, stride=stride)
 
-start.record()
-out_pool = pool(input2)
-loss_pool = out_pool.sum()
-loss_pool.backward()
-end.record()
-torch.cuda.synchronize()
-pool_time = start.elapsed_time(end)
+    start.record()
+    out_pool = pool(input2)
+    loss_pool = out_pool.sum()
+    loss_pool.backward()
+    end.record()
+    torch.cuda.synchronize()
+    pool_time = start.elapsed_time(end)
 
-# --- Compare results ---
-print(f"⏱️  SemiConv2d Time: {semi_time:.3f} ms")
-print(f"⏱️  MaxPool2d Time: {pool_time:.3f} ms")
+    max_avg += pool_time
+    semi_avg += semi_time
 
-# Time SemiConv
-torch.cuda.synchronize()
-start = torch.cuda.Event(enable_timing=True)
-end = torch.cuda.Event(enable_timing=True)
+    # --- Compare results ---
+print(f"⏱️  SemiConv2d Time: {semi_avg / 1000:.3f} ms")
+print(f"⏱️  MaxPool2d Time: {max_avg / 1000:.3f} ms")
 
-start.record()
-out_semi = semi(input)
-loss_semi = out_semi.sum()
-loss_semi.backward()
-end.record()
-torch.cuda.synchronize()
-semi_time = start.elapsed_time(end)  # ms
-
-# --- PyTorch MaxPool ---
-input2 = input.detach().clone().requires_grad_()
-pool = torch.nn.MaxPool2d(kernel_size=kernel_size, stride=stride)
-
-start.record()
-out_pool = pool(input2)
-loss_pool = out_pool.sum()
-loss_pool.backward()
-end.record()
-torch.cuda.synchronize()
-pool_time = start.elapsed_time(end)
-
-
-# --- Compare results ---
-print(f"⏱️  SemiConv2d Time: {semi_time:.3f} ms")
-print(f"⏱️  MaxPool2d Time: {pool_time:.3f} ms")
-
-
-# Time SemiConv
-torch.cuda.synchronize()
-start = torch.cuda.Event(enable_timing=True)
-end = torch.cuda.Event(enable_timing=True)
-
-start.record()
-out_semi = semi(input)
-loss_semi = out_semi.sum()
-loss_semi.backward()
-end.record()
-torch.cuda.synchronize()
-semi_time = start.elapsed_time(end)  # ms
-
-# --- PyTorch MaxPool ---
-input2 = input.detach().clone().requires_grad_()
-pool = torch.nn.MaxPool2d(kernel_size=kernel_size, stride=stride)
-
-start.record()
-out_pool = pool(input2)
-loss_pool = out_pool.sum()
-loss_pool.backward()
-end.record()
-torch.cuda.synchronize()
-pool_time = start.elapsed_time(end)
-
-
-# --- Compare results ---
-print(f"⏱️  SemiConv2d Time: {semi_time:.3f} ms")
-print(f"⏱️  MaxPool2d Time: {pool_time:.3f} ms")
-
-
-# Time SemiConv
-torch.cuda.synchronize()
-start = torch.cuda.Event(enable_timing=True)
-end = torch.cuda.Event(enable_timing=True)
-
-start.record()
-out_semi = semi(input)
-loss_semi = out_semi.sum()
-loss_semi.backward()
-end.record()
-torch.cuda.synchronize()
-semi_time = start.elapsed_time(end)  # ms
-
-# --- PyTorch MaxPool ---
-input2 = input.detach().clone().requires_grad_()
-pool = torch.nn.MaxPool2d(kernel_size=kernel_size, stride=stride)
-
-start.record()
-out_pool = pool(input2)
-loss_pool = out_pool.sum()
-loss_pool.backward()
-end.record()
-torch.cuda.synchronize()
-pool_time = start.elapsed_time(end)
-
-
-# --- Compare results ---
-print(f"⏱️  SemiConv2d Time: {semi_time:.3f} ms")
-print(f"⏱️  MaxPool2d Time: {pool_time:.3f} ms")
-torch.cuda.empty_cache()
+# ⏱️  SemiConv2d Time: 3.245 ms
+# ⏱️  MaxPool2d Time: 1.084 ms
