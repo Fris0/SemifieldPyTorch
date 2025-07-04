@@ -32,7 +32,8 @@ semi = SemiConv2d(
 
 semi_avg = 0
 max_avg = 0
-for i in range(1000):  
+for i in range(1000):
+    input = torch.randn(batch_size, channels, height, width, device=device, requires_grad=True)
     # Time SemiConv
     torch.cuda.synchronize()
     start = torch.cuda.Event(enable_timing=True)
@@ -65,5 +66,5 @@ for i in range(1000):
 print(f"⏱️  SemiConv2d Time: {semi_avg / 1000:.3f} ms")
 print(f"⏱️  MaxPool2d Time: {max_avg / 1000:.3f} ms")
 
-# ⏱️  SemiConv2d Time: 3.245 ms
-# ⏱️  MaxPool2d Time: 1.084 ms
+#⏱️  SemiConv2d Time: 2.869 ms
+#⏱️  MaxPool2d Time: 1.083 ms
