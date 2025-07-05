@@ -263,7 +263,7 @@ class SemiConv2d(torch.nn.Module):
     Calls the MaxMin or MinPlus semifield convolution wrappers.
     """
 
-    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=2.0, groups=1):
+    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=1, groups=1):
         super().__init__()
         # Variables that define output shape
         self.in_channels = in_channels
@@ -278,13 +278,13 @@ class SemiConv2d(torch.nn.Module):
 
         self.channels_per_group = in_channels // groups
 
-        # Only used during SmoothMax semifield conovolution
+        # Only used during SmoothMax semifield convolution
         self.alpha = float(alpha)
 
         if self.alpha < 0.0:
             raise ValueError("Alpha should be greater then 0")
 
-        self.kernel = None
+        self.kernel = None  # Can be set before forward. Useful for structuring kernel functions.
         self.padding = None # Lazy init
         self.kernel_size = kernel_size
 
@@ -298,12 +298,12 @@ class SemiConv2d(torch.nn.Module):
         # Create kernel with same dtype as input for proper cuda-kernel functioning.
         if self.kernel == None:
             self.kernel = torch.nn.Parameter(torch.zeros(
-                self.out_channels,
-                self.channels_per_group,
-                self.kernel_size,
-                self.kernel_size,
-                device=input.device,
-                dtype=input.dtype
+                                            self.out_channels,
+                                            self.channels_per_group,
+                                            self.kernel_size,
+                                            self.kernel_size,
+                                            device=input.device,
+                                            dtype=input.dtype
             ))
             self.register_parameter("kernel", self.kernel)
 
@@ -410,3 +410,35 @@ class SemiConv2d(torch.nn.Module):
         bottom = right = p_h - top
 
         return (left, right, top, bottom)
+
+class ParametricStructuringConv(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, semifield_type, structuring_fn, kernel_size=3, stride=1, alpha=2.0, groups=1):
+        super().__init__()
+        self.s = torch.nn.Parameter(torch.tensor(1.0))
+
+        self.semiconv = SemiConv2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            semifield_type=semifield_type,
+            kernel_size=kernel_size,
+            stride=stride,
+            alpha=alpha,
+            groups=groups,
+        )
+    
+    def forward(self, input):
+        # Build kernel using current value of self.s
+        kernel = self.structuring_fn(
+            in_channels=self.semiconv.out_channels,
+            out_channels=self.semiconv.channels_per_group,
+            kernel_size=self.semiconv.kernel_size,
+            s=self.s,
+            device=input.device,
+            dtype=input.dtype
+        )
+
+        # Set the kernel directly on the underlying SemiConv2d
+        self.semiconv.kernel = kernel
+
+        # Call the actual convolution
+        return self.semiconv(input)

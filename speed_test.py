@@ -11,7 +11,7 @@ torch.manual_seed(0)
 device = "cuda"
 
 # Config
-batch_size = 1000
+batch_size = 2000
 channels = 30
 height = width = 32
 kernel_size = 3
