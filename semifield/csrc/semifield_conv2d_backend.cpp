@@ -23,23 +23,23 @@ inline Conv2DParams extract_conv2d_params(const at::Tensor& input, const at::Ten
 }
 
 // Max Min
-std::vector<at::Tensor> max_min_inference(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const int groups) {
+std::vector<at::Tensor> max_plus_inference(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const int groups) {
     Conv2DParams p = extract_conv2d_params(input, kernel);
 
     // Return the result from the cuda kernel: output and indicees
-    return max_min_cuda_inference(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride, groups);
+    return max_plus_cuda_inference(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride, groups);
 }
 
-std::vector<at::Tensor> max_min_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const int groups) {
+std::vector<at::Tensor> max_plus_forward(const int in_channels, const int out_channels, const at::Tensor& input, const at::Tensor& kernel, const int stride, const int groups) {
     Conv2DParams p = extract_conv2d_params(input, kernel);
 
     // Return the result from the cuda kernel: output and indicees
-    return max_min_cuda_forward(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride, groups);
+    return max_plus_cuda_forward(p.batch_size, in_channels, out_channels, input, kernel, p.H, p.W, p.kH, p.kW, stride, groups);
 }
 
-std::vector<at::Tensor> max_min_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const at::Tensor& input_indices, const at::Tensor& kernel_indices) {
+std::vector<at::Tensor> max_plus_backward(const int in_channels, const int out_channels, const at::Tensor& grad_output, const at::Tensor& input, const at::Tensor& kernel, const at::Tensor& input_indices, const at::Tensor& kernel_indices) {
     // Return the result from the cuda kernel
-    return max_min_cuda_backward(in_channels, out_channels, grad_output, input, kernel, input_indices, kernel_indices);
+    return max_plus_cuda_backward(in_channels, out_channels, grad_output, input, kernel, input_indices, kernel_indices);
 }
 
 // Min Plus
@@ -79,9 +79,9 @@ std::vector<at::Tensor> smooth_max_backward(const int in_channels, const int out
 
 //Register the C++ functions in the torch::library
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("max_min_inference", &max_min_inference, "MaxMin Inference");
-    m.def("max_min_forward", &max_min_forward, "MaxMin Forward");
-    m.def("max_min_backward", &max_min_backward, "MaxMin Backward");
+    m.def("max_plus_inference", &max_plus_inference, "MaxPlus Inference");
+    m.def("max_plus_forward", &max_plus_forward, "MaxPlus Forward");
+    m.def("max_plus_backward", &max_plus_backward, "MaxPlus Backward");
     m.def("min_plus_inference", &min_plus_inference, "MinPlus Inference");
     m.def("min_plus_forward", &min_plus_forward, "MinPlus Forward");
     m.def("min_plus_backward", &min_plus_backward, "MinPlus Backward");

@@ -11,14 +11,11 @@ torch.manual_seed(0)
 device = "cuda"
 
 # Config
-batch_size = 2000
-channels = 30
+batch_size = 1000
+channels = 10
 height = width = 32
 kernel_size = 3
 stride = 2
-
-# Input
-input = torch.randn(batch_size, channels, height, width, device=device, requires_grad=True)
 
 # --- SemiConv2d MaxMin in "maxpool mode" ---
 semi = SemiConv2d(
@@ -32,7 +29,7 @@ semi = SemiConv2d(
 
 semi_avg = 0
 max_avg = 0
-for i in range(1000):
+for i in range(100):
     input = torch.randn(batch_size, channels, height, width, device=device, requires_grad=True)
     # Time SemiConv
     torch.cuda.synchronize()
@@ -61,7 +58,6 @@ for i in range(1000):
 
     max_avg += pool_time
     semi_avg += semi_time
-
     # --- Compare results ---
 print(f"⏱️  SemiConv2d Time: {semi_avg / 1000:.3f} ms")
 print(f"⏱️  MaxPool2d Time: {max_avg / 1000:.3f} ms")

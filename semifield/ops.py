@@ -42,7 +42,7 @@ def save_ctx_tensors(ctx, input_contig, kernel_contig, input_indices, kernel_ind
     ctx.in_channels = in_channels
     ctx.out_channels = out_channels
 
-class MaxMin(torch.autograd.Function):
+class MaxPlus(torch.autograd.Function):
     """
     Create an autograd supported function.
 
@@ -71,7 +71,7 @@ class MaxMin(torch.autograd.Function):
         input_contig, kernel_contig = make_contiguous(input, kernel)
 
         # Do forward and store output for consequent steps and indicees for backward
-        output, input_indices, kernel_indices = conv2d.max_min_forward(
+        output, input_indices, kernel_indices = conv2d.max_plus_forward(
                                                 in_channels,
                                                 out_channels,
                                                 input_contig,
@@ -101,7 +101,7 @@ class MaxMin(torch.autograd.Function):
         out_channels = ctx.out_channels
 
         # Calculate the gradients with respect to the input and kernel
-        grad_input, grad_kernel = conv2d.max_min_backward(
+        grad_input, grad_kernel = conv2d.max_plus_backward(
                                                         in_channels,
                                                         out_channels,
                                                         grad_output_contig,
@@ -251,19 +251,21 @@ class SemiConv2d(torch.nn.Module):
     First initialize the SemiConv2D, then use class functions.
 
     inputs:
-    N = Batch size
     in_channels  = channels of input
     out_channels = desired output channels
     semifield_type = MaxMin or MinPlus
     kernel_size  = Tuple of shape of the kernel (W, H)
     stride  = the spacing between each convolution
     groups = splits in_channels over groups
+    alpha = the Smooth Max parameter
+    groups = the amount of ways to split the input channels
+    padding = Tuple (left, right, top, bottom)
 
     Side-effects:
     Calls the MaxMin or MinPlus semifield convolution wrappers.
     """
 
-    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=1, groups=1):
+    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=1, groups=1, padding=(0,0,0,0), padding_mode=None):
         super().__init__()
         # Variables that define output shape
         self.in_channels = in_channels
@@ -285,7 +287,9 @@ class SemiConv2d(torch.nn.Module):
             raise ValueError("Alpha should be greater then 0")
 
         self.kernel = None  # Can be set before forward. Useful for structuring kernel functions.
-        self.padding = None # Lazy init
+        self.padding = padding # Lazy init
+        self.padding_mode = padding_mode
+
         self.kernel_size = kernel_size
 
         # String used in case switch for correct smeifield convolution
@@ -308,15 +312,16 @@ class SemiConv2d(torch.nn.Module):
             self.register_parameter("kernel", self.kernel)
 
         # After creation of kernel find padding required for input
-        self.padding = self.calculate_padding()
+        if self.padding_mode == "same":
+            self.padding = self.calculate_padding()
 
         # Call correct semifield convolution
         match self.semifield_type:
-            case "MaxMin":
+            case "MaxPlus":
                 # Pad input then pass it including kernel and padding
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('-inf'))
                 if input.requires_grad:
-                    return MaxMin.apply(
+                    return MaxPlus.apply(
                                         self.in_channels,
                                         self.out_channels,
                                         input,
@@ -325,7 +330,7 @@ class SemiConv2d(torch.nn.Module):
                                         self.groups
                     )
                 else:
-                    return conv2d.max_min_inference(self.in_channels,
+                    return conv2d.max_plus_inference(self.in_channels,
                                                  self.out_channels,
                                                  input,
                                                  self.kernel,
@@ -412,9 +417,17 @@ class SemiConv2d(torch.nn.Module):
         return (left, right, top, bottom)
 
 class ParametricStructuringConv(torch.nn.Module):
+    """
+    Function wrapper that allows a scale parameter s to be trained
+    for structuring element kernel functions.
+
+    This is an generalized way to apply these functions, but can be
+    changed to suffice any needs.
+    """
     def __init__(self, in_channels, out_channels, semifield_type, structuring_fn, kernel_size=3, stride=1, alpha=2.0, groups=1):
         super().__init__()
         self.s = torch.nn.Parameter(torch.tensor(1.0))
+        self.structuring_fn = structuring_fn
 
         self.semiconv = SemiConv2d(
             in_channels=in_channels,

@@ -24,7 +24,7 @@ struct OutputRegion {
 
 // MaxMin Inference
 template <typename scalar_t>
-__global__ void max_min_cuda_inference_kernel(
+__global__ void max_plus_cuda_inference_kernel(
     struct OutputRegion region,
     const int batch_size,
     const int in_channels,
@@ -69,7 +69,7 @@ __global__ void max_min_cuda_inference_kernel(
                 scalar_t val = input[val_idx];
                 scalar_t kval = kernel[kval_idx];
 
-                scalar_t res = val - kval;
+                scalar_t res = val + kval;
                 if (res > max_val){
                     max_val = res;
                 }
@@ -79,7 +79,7 @@ __global__ void max_min_cuda_inference_kernel(
     output[idx] = max_val;
 }
 
-std::vector<at::Tensor> max_min_cuda_inference(
+std::vector<at::Tensor> max_plus_cuda_inference(
     const int batch_size,
     const int in_channels, const int out_channels,
     const at::Tensor& input, const at::Tensor& kernel,
@@ -110,7 +110,7 @@ std::vector<at::Tensor> max_min_cuda_inference(
     // [&] Take all variables that are defined above and use them in kernel
     AT_DISPATCH_ALL_TYPES(input.scalar_type(), "dilation_forward_cuda",
     ([&] {
-        max_min_cuda_inference_kernel<scalar_t><<<blocks, threads_per_block>>>(
+        max_plus_cuda_inference_kernel<scalar_t><<<blocks, threads_per_block>>>(
             region,
             batch_size,
             in_channels,
@@ -125,12 +125,13 @@ std::vector<at::Tensor> max_min_cuda_inference(
           );
         }
     ));
+    cudaDeviceSynchronize();
     return {output};
 }
 
 // MaxMin
 template <typename scalar_t>
-__global__ void max_min_cuda_forward_kernel(
+__global__ void max_plus_cuda_forward_kernel(
     struct OutputRegion region,
     const int batch_size,
     const int in_channels,
@@ -178,7 +179,7 @@ __global__ void max_min_cuda_forward_kernel(
                 scalar_t val = input[val_idx];
                 scalar_t kval = kernel[kval_idx];
 
-                scalar_t res = val - kval;
+                scalar_t res = val + kval;
                 if (res > max_val){
                     max_val = res;
                     max_idx = val_idx;
@@ -192,7 +193,7 @@ __global__ void max_min_cuda_forward_kernel(
     kernel_indices[idx] = max_kernel_idx;
 }
 
-std::vector<at::Tensor> max_min_cuda_forward(
+std::vector<at::Tensor> max_plus_cuda_forward(
     const int batch_size,
     const int in_channels, const int out_channels,
     const at::Tensor& input, const at::Tensor& kernel,
@@ -225,7 +226,7 @@ std::vector<at::Tensor> max_min_cuda_forward(
     // [&] Take all variables that are defined above and use them in kernel
     AT_DISPATCH_ALL_TYPES(input.scalar_type(), "dilation_forward_cuda",
     ([&] {
-        max_min_cuda_forward_kernel<scalar_t><<<blocks, threads_per_block>>>(
+        max_plus_cuda_forward_kernel<scalar_t><<<blocks, threads_per_block>>>(
             region,
             batch_size,
             in_channels,
@@ -242,11 +243,12 @@ std::vector<at::Tensor> max_min_cuda_forward(
           );
         }
     ));
+    cudaDeviceSynchronize();
     return {output, input_indices, kernel_indices};
 }
 
 template <typename scalar_t>
-__global__ void max_min_cuda_backward_kernel(
+__global__ void max_plus_cuda_backward_kernel(
     const int in_channels, const int out_channels,
     const scalar_t* grad_output,
     const scalar_t* input, const scalar_t* kernel,
@@ -266,7 +268,7 @@ __global__ void max_min_cuda_backward_kernel(
     atomicAdd(&grad_kernel[kernel_idx], grad);
 }
 
-std::vector<at::Tensor> max_min_cuda_backward(
+std::vector<at::Tensor> max_plus_cuda_backward(
     const int in_channels, const int out_channels,
     const at::Tensor& grad_output,
     const at::Tensor& input, const at::Tensor& kernel,
@@ -280,7 +282,7 @@ std::vector<at::Tensor> max_min_cuda_backward(
     int blocks = (total_threads + threads_per_block - 1) / threads_per_block;
 
     AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "max_min_cuda_backward", ([&] {
-        max_min_cuda_backward_kernel<scalar_t><<<blocks, threads_per_block>>>(
+        max_plus_cuda_backward_kernel<scalar_t><<<blocks, threads_per_block>>>(
             in_channels, out_channels,
             grad_output.data_ptr<scalar_t>(),
             input.data_ptr<scalar_t>(), kernel.data_ptr<scalar_t>(),
@@ -288,7 +290,7 @@ std::vector<at::Tensor> max_min_cuda_backward(
             input_indices.data_ptr<int>(), kernel_indices.data_ptr<int>(),
             total_threads);
   }));
-
+  cudaDeviceSynchronize();
   return {grad_input, grad_kernel};
 }
 
@@ -394,6 +396,7 @@ std::vector<at::Tensor> min_plus_cuda_inference(
           );
         }
     ));
+    cudaDeviceSynchronize();
     return {output};
 }
 
@@ -509,6 +512,7 @@ std::vector<at::Tensor> min_plus_cuda_forward(
           );
         }
     ));
+    cudaDeviceSynchronize();
     return {output, input_indices, kernel_indices};
 }
 
@@ -555,7 +559,7 @@ std::vector<at::Tensor> min_plus_cuda_backward(
             input_indices.data_ptr<int>(), kernel_indices.data_ptr<int>(),
             total_threads);
   }));
-
+  cudaDeviceSynchronize();
   return {grad_input, grad_kernel};
 }
 
@@ -662,6 +666,7 @@ std::vector<at::Tensor> smooth_max_cuda_forward(
             static_cast<scalar_t>(alpha),
             H, W, kH, kW, stride, groups);
     }));
+    cudaDeviceSynchronize();
     return {output};
 }
 
@@ -798,5 +803,6 @@ std::vector<at::Tensor> smooth_max_cuda_backward(
             stride, static_cast<scalar_t>(alpha),
             groups);
     }));
+    cudaDeviceSynchronize();
     return {grad_input, grad_kernel};
 }

@@ -1,6 +1,6 @@
 // Cuda dilation function declaration
 
-std::vector<at::Tensor> max_min_cuda_inference(
+std::vector<at::Tensor> max_plus_cuda_inference(
     const int batch_size,
     const int in_channels,
     const int out_channels,
@@ -13,7 +13,7 @@ std::vector<at::Tensor> max_min_cuda_inference(
     const int stride,
     const int groups);
 
-std::vector<at::Tensor> max_min_cuda_forward(
+std::vector<at::Tensor> max_plus_cuda_forward(
     const int batch_size,
     const int in_channels,
     const int out_channels,
@@ -26,7 +26,7 @@ std::vector<at::Tensor> max_min_cuda_forward(
     const int stride,
     const int groups);
 
-std::vector<torch::Tensor> max_min_cuda_backward(
+std::vector<torch::Tensor> max_plus_cuda_backward(
     const int in_channels,
     const int out_channels,
     const at::Tensor& grad_output,
