@@ -421,7 +421,7 @@ class ParametricStructuringConv(torch.nn.Module):
     Function wrapper that allows a scale parameter s to be trained
     for structuring element kernel functions.
 
-    This is an generalized way to apply these functions, but can be
+    This is a generalized way to apply these functions, but can be
     changed to suffice any needs.
     """
     def __init__(self, in_channels, out_channels, semifield_type, structuring_fn, kernel_size=3, stride=1, alpha=2.0, groups=1):
