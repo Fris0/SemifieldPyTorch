@@ -64,7 +64,7 @@ __global__ void max_plus_cuda_inference_kernel(
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + (kH - 1 - dy) * kW + (kW - 1 - dx);
 
                 scalar_t val = input[val_idx];
                 scalar_t kval = kernel[kval_idx];
@@ -129,7 +129,7 @@ std::vector<at::Tensor> max_plus_cuda_inference(
     return {output};
 }
 
-// MaxMin
+// MaxPlus
 template <typename scalar_t>
 __global__ void max_plus_cuda_forward_kernel(
     struct OutputRegion region,
@@ -174,7 +174,7 @@ __global__ void max_plus_cuda_forward_kernel(
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + (kH - 1 - dy) * kW + (kW - 1 - dx);
 
                 scalar_t val = input[val_idx];
                 scalar_t kval = kernel[kval_idx];
@@ -336,7 +336,7 @@ __global__ void min_plus_cuda_inference_kernel(
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + (kH - 1 - dy) * kW + (kW - 1 - dx);
                 scalar_t val = input[val_idx];
                 scalar_t kval = kernel[kval_idx];
 
@@ -444,7 +444,7 @@ __global__ void min_plus_cuda_forward_kernel(
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + (kH - 1 - dy) * kW + (kW - 1 - dx);
                 scalar_t val = input[val_idx];
                 scalar_t kval = kernel[kval_idx];
 
@@ -605,7 +605,7 @@ __global__ void smooth_max_cuda_forward_kernel(
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + (kH - 1 - dy) * kW + (kW - 1 - dx);
                 scalar_t s = input[val_idx] + kernel[kval_idx];
 
                 if (s > max_s){
@@ -624,7 +624,7 @@ __global__ void smooth_max_cuda_forward_kernel(
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + (kH - 1 - dy) * kW + (kW - 1 - dx);
                 scalar_t s = input[val_idx] + kernel[kval_idx];
                 sum_exp += expf(alpha * (s - max_s));
             }
@@ -714,7 +714,7 @@ __global__ void smooth_max_cuda_backward_kernel(
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + (kH - 1 - dy) * kW + (kW - 1 - dx);
 
                 scalar_t s = kernel[kval_idx] + input[val_idx];
                 if (s > max_s){
@@ -733,7 +733,7 @@ __global__ void smooth_max_cuda_backward_kernel(
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + (kH - 1 - dy) * kW + (kW - 1 - dx);
                 scalar_t s = input[val_idx] + kernel[kval_idx];
                 sum_exp += expf(alpha * (s - max_s));
             }
@@ -747,7 +747,7 @@ __global__ void smooth_max_cuda_backward_kernel(
                 int at_x = x + dx - x_offset;
 
                 int val_idx  = n * in_channels * H * W + (group_idx * in_channels_per_group + ic) * H * W + at_y * W + at_x;
-                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + dy * kW + dx;
+                int kval_idx = oc * in_channels_per_group * kH * kW + ic * kH * kW + (kH - 1 - dy) * kW + (kW - 1 - dx);
 
                 scalar_t s = input[val_idx] + kernel[kval_idx];
                 scalar_t p = expf(alpha * (s - max_s)) / sum_exp;
