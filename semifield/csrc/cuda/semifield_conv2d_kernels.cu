@@ -631,7 +631,7 @@ __global__ void smooth_max_cuda_forward_kernel(
         }
     }
 
-    output[idx] = (1.0f / alpha) * (logf(sum_exp) + alpha * max_s);
+    output[idx] = max_s + (1.0f / alpha) * (logf(sum_exp));
 }
 
 // Kernel launch wrapper, adjusting from your existing function

@@ -265,7 +265,7 @@ class SemiConv2d(torch.nn.Module):
     Calls the MaxMin or MinPlus semifield convolution wrappers.
     """
 
-    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=1, groups=1, padding=(0,0,0,0), padding_mode=None):
+    def __init__(self, in_channels, out_channels, semifield_type, kernel_size=3, stride=1, alpha=1, groups=1, padding=(0,0,0,0), padding_mode=None, dtype=None):
         super().__init__()
         # Variables that define output shape
         self.in_channels = in_channels
@@ -286,11 +286,19 @@ class SemiConv2d(torch.nn.Module):
         if self.alpha < 0.0:
             raise ValueError("Alpha should be greater then 0")
 
-        self.kernel = None  # Can be set before forward. Useful for structuring kernel functions.
         self.padding = padding # Lazy init
         self.padding_mode = padding_mode
 
         self.kernel_size = kernel_size
+
+        self.kernel = torch.nn.Parameter(torch.zeros(
+            self.out_channels,
+            self.channels_per_group,
+            self.kernel_size,
+            self.kernel_size,
+            device='cuda',
+            dtype=dtype
+        ))
 
         # String used in case switch for correct smeifield convolution
         self.semifield_type = semifield_type
@@ -298,18 +306,6 @@ class SemiConv2d(torch.nn.Module):
     def forward(self, input):
         # Ensure right dimension
         input = self.unsqueeze_4d(input)
-
-        # Create kernel with same dtype as input for proper cuda-kernel functioning.
-        if self.kernel == None:
-            self.kernel = torch.nn.Parameter(torch.zeros(
-                                            self.out_channels,
-                                            self.channels_per_group,
-                                            self.kernel_size,
-                                            self.kernel_size,
-                                            device=input.device,
-                                            dtype=input.dtype
-            ))
-            self.register_parameter("kernel", self.kernel)
 
         # After creation of kernel find padding required for input
         if self.padding_mode == "same":
@@ -320,6 +316,7 @@ class SemiConv2d(torch.nn.Module):
             case "MaxPlus":
                 # Pad input then pass it including kernel and padding
                 input = F.pad(input, pad=self.padding, mode='constant', value=float('-inf'))
+
                 if input.requires_grad:
                     return MaxPlus.apply(
                                         self.in_channels,

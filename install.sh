@@ -1,2 +1,1 @@
-python3 setup.py build_ext --inplace
-pip install -e .
+pip install -e . --no-cache-dir --force-reinstall
