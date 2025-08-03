@@ -38,10 +38,11 @@ columns = ['kernel_size', 'semifield', 'train_time', 'accuracy']
 df = pd.DataFrame(columns=columns)
 
 # Save to CSV with headers
-df.to_csv('verify_and_time.csv', index=False)
+file = "verify_and_time_K.csv"
+df.to_csv(file, index=False)
 
 # Kernel sizes to test with
-kernel_sizes = [2, 3, 5, 7, 11]
+kernel_sizes = [2, 3, 5, 7]
 # Semi-field convolutions to test with
 semifields = ['MaxPlus', 'MinPlus', 'SmoothMax']
 
@@ -62,7 +63,7 @@ transform = transforms.Compose([
 ])
 
 # Load the Fahshion MNIST data set
-dataset = datasets.FashionMNIST(root='./data', train=True, download=True, transform=transform)
+dataset = datasets.KMNIST(root='./data', train=True, download=True, transform=transform)
 
 # Split into training set and value set for testing
 train_size = int(0.7 * len(dataset))
@@ -70,7 +71,7 @@ val_size = len(dataset) - train_size
 
 for ((k, pad), semifield) in combinations:
     results = []
-    for i in range(30):
+    for i in range(10):
         train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
         # Make batches of 1024 from the training set and evaluation set
@@ -95,7 +96,6 @@ for ((k, pad), semifield) in combinations:
         start = timer()
         for epoch in range(num_epochs):
             model.train()
-            running_loss = 0.0
             for inputs, labels in train_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
 
@@ -105,17 +105,16 @@ for ((k, pad), semifield) in combinations:
                 loss.backward()
                 optimizer.step()
 
-
-                running_loss += loss.item()
         end = timer()
         time = end - start
         accuracy = evaluate(model, val_loader)
+        print(f"kernel_size: {k}, semifield:{semifield}, train_time:{time}, accuracy:{accuracy}")
         results.append({"kernel_size": k, "semifield":semifield, "train_time":time, "accuracy":accuracy})
 
     # Load the existing CSV
-    df = pd.read_csv('verify_and_time.csv')
+    df = pd.read_csv(file)
     df = pd.concat([df, pd.DataFrame(results)], ignore_index=True)
-    df.to_csv('verify_and_time.csv', index=False)
+    df.to_csv(file, index=False)
 
 def calculate_padding(k):
     """
@@ -134,7 +133,7 @@ def calculate_padding(k):
 
 for k in kernel_sizes:
     results = []
-    for i in range(30):
+    for i in range(10):
         train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
         # Make batches of 1024 from the training set and evaluation set
@@ -163,7 +162,6 @@ for k in kernel_sizes:
         start = timer()
         for epoch in range(num_epochs):
             model.train()
-            running_loss = 0.0
             for inputs, labels in train_loader:
                 inputs, labels = inputs.to(device), labels.to(device)
 
@@ -173,14 +171,12 @@ for k in kernel_sizes:
                 loss.backward()
                 optimizer.step()
 
-
-                running_loss += loss.item()
         end = timer()
         time = end - start
         accuracy = evaluate(model, val_loader)
         results.append({"kernel_size": k, "semifield":"Standard", "train_time":time, "accuracy":accuracy})
 
     # Load the existing CSV
-    df = pd.read_csv('verify_and_time.csv')
+    df = pd.read_csv(file)
     df = pd.concat([df, pd.DataFrame(results)], ignore_index=True)
-    df.to_csv('verify_and_time.csv', index=False)
+    df.to_csv(file, index=False)

@@ -9,8 +9,8 @@ torch.manual_seed(0)
 torch.cuda.empty_cache()
 
 # Config
-batch_size = 10000
-channels = 1
+batch_size = 10240
+channels = 10
 height = width = 32
 kernel_size = 3
 stride = 2
