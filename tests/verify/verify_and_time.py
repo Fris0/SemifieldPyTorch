@@ -6,7 +6,7 @@ import math
 from timeit import default_timer as timer
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split
-from LeNet5 import SemiLeNet5, StandardLeNet5
+from tests.verify.LeNet5 import SemiLeNet5, StandardLeNet5
 
 def evaluate(model, dataloader):
     """
