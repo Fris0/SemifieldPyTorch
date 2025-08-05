@@ -39,8 +39,8 @@ limit = 128000000 # 128 MB in bytes
 
 # Initialize
 bytes_list = []
-current = 64000
-step = 64000
+current = 256000
+step = 256000
 step_count = 0
 
 # Fill the list
@@ -56,6 +56,8 @@ batches = [
     (math.floor((byte) / (10 * 64 * 64 * 4)), byte / 1000000)
     for byte in bytes_list
 ]
+
+print(batches)
 
 kernel_sizes = [2, 3, 5]
 semifields = ['MaxPlus', 'MinPlus', 'SmoothMax']
