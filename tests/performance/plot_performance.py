@@ -36,8 +36,8 @@ for idx, kernel_size in enumerate(kernel_sizes):
                     linewidth=5, color=colors[semifield])
             ax[idx].scatter(temp["mb"], time_s, color=colors[semifield])
         ax[idx].set_yscale("log")
-        ax[idx].set_ylim(10**-3.3, 10**-0.5)
-        ax[idx].set_xlim(5, 73)
+        ax[idx].set_ylim(10**-4.5, 1)
+        ax[idx].set_xlim(-5, 128)
         # Axis formatting
         ax[idx].tick_params(axis='both', which='major', labelsize=40)
         for spine in ax[idx].spines.values():

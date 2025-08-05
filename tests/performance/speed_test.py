@@ -35,7 +35,7 @@ torch.manual_seed(0)
 torch.cuda.empty_cache()
 
 # Limit test
-limit = 128000000 # 128 MB in bytes
+limit = 192000000 # 128 MB in bytes
 
 # Initialize
 bytes_list = []
@@ -57,7 +57,6 @@ batches = [
     for byte in bytes_list
 ]
 
-print(batches)
 
 kernel_sizes = [2, 3, 5]
 semifields = ['MaxPlus', 'MinPlus', 'SmoothMax']
