@@ -35,7 +35,7 @@ torch.manual_seed(0)
 torch.cuda.empty_cache()
 
 # Config
-target_mb = list(range(6, 78, 6))
+target_mb = list(range(2, 134, 6))
 batches = [
     (math.floor((mb * 1024 * 1024) / (10 * 64 * 64 * 4)), mb)
     for mb in target_mb
