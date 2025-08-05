@@ -17,7 +17,7 @@ handle = pynvml.nvmlDeviceGetHandleByIndex(0)
 columns = ['semifield', 'kernel_size', 'padding','mb','stride','input_size','channels','mean_time_ms','std_dev_ms', 'clock']
 
 # Create empty DataFrame with those columns
-#df = pd.DataFrame(columns=columns)
+df = pd.DataFrame(columns=columns)
 
 # Save to CSV with headers
 print("Give GPU Name:")

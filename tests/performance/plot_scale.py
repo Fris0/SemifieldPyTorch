@@ -26,7 +26,7 @@ ax.set_xlabel("Kernel Size", fontsize=14)
 ax.set_ylabel("Slowdown Factor", fontsize=14)
 ax.tick_params(axis='both', labelsize=12)
 ax.grid(axis='y', linestyle='--', alpha=0.7)
-ax.legend(title="Semifield", fontsize=12, title_fontsize=12)
+ax.legend(title="Semifield", fontsize=12, title_fontsize=20)
 
 plt.tight_layout()
 plt.savefig(f"./tests/performance/bar_scale{gpu}.png")
